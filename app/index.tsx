@@ -46,6 +46,7 @@ export default function IndexScreen() {
         accuracy: Location.Accuracy.High,
       });
       return location.coords;
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       Alert.alert(
         "Error de Ubicación",
