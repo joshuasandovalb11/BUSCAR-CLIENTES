@@ -173,46 +173,62 @@ export default function IndexScreen() {
     }
   };
 
+  // 1. CREAMOS UN COMPONENTE AUXILIAR CON EL CONTENIDO DE LA PANTALLA
+  //    (Esto hace el código más limpio y evita repetir)
+  const ContenidoDeLaPantalla = () => (
+    <View style={styles.container}>
+      <View style={styles.headerContainer}>
+        <Text style={styles.title}>Buscador de Clientes</Text>
+        <Text style={styles.statusMessage}>{mensaje}</Text>
+      </View>
+
+      <View style={styles.searchContainer}>
+        <TextInput
+          style={styles.input}
+          placeholder="Número de Cliente"
+          placeholderTextColor="#999"
+          keyboardType="numeric"
+          value={numeroCliente}
+          onChangeText={setNumeroCliente}
+          editable={!cargando}
+        />
+        {cargando ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <Text style={styles.loadingText}>Procesando...</Text>
+          </View>
+        ) : (
+          <TouchableOpacity
+            style={styles.button}
+            onPress={buscarCliente}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.buttonText}>Buscar y Navegar</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+
+  // 2. EN EL RETURN PRINCIPAL, USAMOS Platform.OS PARA LA CONDICIÓN
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={styles.keyboardContainer}
       >
-        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
-          <View style={styles.container}>
-            <View style={styles.headerContainer}>
-              <Text style={styles.title}>Buscador de Clientes</Text>
-              <Text style={styles.statusMessage}>{mensaje}</Text>
-            </View>
-
-            <View style={styles.searchContainer}>
-              <TextInput
-                style={styles.input}
-                placeholder="Número de Cliente"
-                placeholderTextColor="#999"
-                keyboardType="numeric"
-                value={numeroCliente}
-                onChangeText={setNumeroCliente}
-                editable={!cargando}
-              />
-              {cargando ? (
-                <View style={styles.loadingContainer}>
-                  <ActivityIndicator size="large" color="#007AFF" />
-                  <Text style={styles.loadingText}>Procesando...</Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.button}
-                  onPress={buscarCliente}
-                  activeOpacity={0.7}
-                >
-                  <Text style={styles.buttonText}>Buscar y Navegar</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          </View>
-        </TouchableWithoutFeedback>
+        {/* Si la plataforma es 'web', muestra el contenido directamente */}
+        {Platform.OS === "web" ? (
+          <ContenidoDeLaPantalla />
+        ) : (
+          /* Si es móvil (iOS o Android), lo envuelve para poder cerrar el teclado */
+          <TouchableWithoutFeedback
+            onPress={Keyboard.dismiss}
+            accessible={false}
+          >
+            <ContenidoDeLaPantalla />
+          </TouchableWithoutFeedback>
+        )}
       </KeyboardAvoidingView>
 
       {/* Modal para seleccionar sucursal */}
