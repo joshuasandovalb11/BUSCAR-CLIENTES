@@ -22,7 +22,7 @@
         "simulator": false
       },
       "web": {
-        "output": "static"
+        "output": "server"
       }
     },
     "production": {
@@ -31,7 +31,7 @@
         "buildType": "app-bundle"
       },
       "web": {
-        "output": "static"
+        "output": "server"
       }
     }
   },
