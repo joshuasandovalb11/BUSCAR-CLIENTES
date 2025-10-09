@@ -81,11 +81,13 @@ export default function IndexScreen() {
     const url = Platform.select({
       ios: `https://www.google.com/maps/dir/?api=1&origin=${origen.latitude},${origen.longitude}&daddr=${destino.latitud},${destino.longitud}&directionsmode=driving`,
       android: `google.navigation:q=${destino.latitud},${destino.longitud}`,
+      default: `https://www.google.com/maps/dir/?api=1&origin=${origen.latitude},${origen.longitude}&destination=${destino.latitud},${destino.longitud}&travelmode=driving`,
     });
     if (url) {
       Linking.openURL(url).catch((err) => {
         setErrorMensaje("No se pudo abrir Google Maps.");
         setErrorModalVisible(true);
+        console.error("Failed to open URL:", err);
       });
     }
   };

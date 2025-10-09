@@ -9,7 +9,12 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.erick.sandoval10.Buscarclientes",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Esta app necesita tu ubicación para poder calcular la ruta hacia el cliente.",
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
