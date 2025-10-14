@@ -236,7 +236,7 @@ export default function IndexScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.sucursalHeader}>
-              <Text style={styles.sucursalIcon}>​​​​​​​​​🌐​​​​​​</Text>
+              <Text style={styles.sucursalIcon}>​​​​​​​​​🗺️​​​​​​</Text>
               <Text style={styles.modalTitle}>Selecciona una Sucursal</Text>
               <Text style={styles.modalSubtitle}>
                 Cliente:{" "}
@@ -644,7 +644,7 @@ const styles = StyleSheet.create({
   },
   sucursalIcon: {
     fontSize: 56,
-    marginBottom: 16,
+    marginBottom: 6,
   },
   confirmIcon: {
     fontSize: 56,
