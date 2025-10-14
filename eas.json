@@ -20,18 +20,12 @@
       },
       "ios": {
         "simulator": false
-      },
-      "web": {
-        "output": "server"
       }
     },
     "production": {
       "channel": "production",
       "android": {
         "buildType": "app-bundle"
-      },
-      "web": {
-        "output": "server"
       }
     }
   },

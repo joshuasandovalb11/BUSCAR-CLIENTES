@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-unused-vars */
 import * as Location from "expo-location";
 import React, { useState } from "react";
 import {
@@ -27,11 +28,13 @@ interface Sucursal {
 }
 
 interface ClienteResponse {
-  message: string;
+  message?: string;
   id: string;
   nombre: string;
   latitud?: number;
   longitud?: number;
+  vendedorNombre?: string;
+  vendedorTelefono?: string | null;
   multipleSucursales?: boolean;
   sucursales?: Sucursal[];
 }
@@ -46,9 +49,13 @@ export default function IndexScreen() {
   const [confirmModalVisible, setConfirmModalVisible] = useState(false);
   const [errorModalVisible, setErrorModalVisible] = useState(false);
   const [permisosModalVisible, setPermisosModalVisible] = useState(false);
+  const [modalNoGpsVisible, setModalNoGpsVisible] = useState(false);
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [clienteActual, setClienteActual] = useState<string>("");
   const [clienteUnico, setClienteUnico] = useState<ClienteResponse | null>(
+    null
+  );
+  const [clienteSinGps, setClienteSinGps] = useState<ClienteResponse | null>(
     null
   );
   const [errorMensaje, setErrorMensaje] = useState("");
@@ -66,7 +73,6 @@ export default function IndexScreen() {
         accuracy: Location.Accuracy.High,
       });
       return location.coords;
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (error) {
       setErrorMensaje("No se pudo obtener la ubicación actual.");
       setErrorModalVisible(true);
@@ -79,15 +85,14 @@ export default function IndexScreen() {
     destino: { latitud: number; longitud: number }
   ) => {
     const url = Platform.select({
-      ios: `https://www.google.com/maps/dir/?api=1&origin=${origen.latitude},${origen.longitude}&daddr=${destino.latitud},${destino.longitud}&directionsmode=driving`,
+      ios: `https://www.google.com/maps/dir/?api=1&origin=${origen.latitude},${origen.longitude}&destination=${destino.latitud},${destino.longitud}&travelmode=driving`,
       android: `google.navigation:q=${destino.latitud},${destino.longitud}`,
       default: `https://www.google.com/maps/dir/?api=1&origin=${origen.latitude},${origen.longitude}&destination=${destino.latitud},${destino.longitud}&travelmode=driving`,
     });
     if (url) {
-      Linking.openURL(url).catch((err) => {
+      Linking.openURL(url).catch(() => {
         setErrorMensaje("No se pudo abrir Google Maps.");
         setErrorModalVisible(true);
-        console.error("Failed to open URL:", err);
       });
     }
   };
@@ -115,11 +120,11 @@ export default function IndexScreen() {
 
     setCargando(true);
     const ubicacionUsuario = await obtenerUbicacionActual();
-    if (ubicacionUsuario) {
+    if (ubicacionUsuario && clienteUnico.latitud && clienteUnico.longitud) {
       setMensaje(`Navegando hacia ${clienteUnico.nombre}...`);
       abrirGoogleMapsNavegacion(ubicacionUsuario, {
-        latitud: clienteUnico.latitud!,
-        longitud: clienteUnico.longitud!,
+        latitud: clienteUnico.latitud,
+        longitud: clienteUnico.longitud,
       });
     }
     setCargando(false);
@@ -140,98 +145,88 @@ export default function IndexScreen() {
       const response = await fetch(URL_API);
       const cliente: ClienteResponse = await response.json();
 
-      if (response.ok) {
-        setClienteActual(cliente.nombre);
+      const isNoGpsCase =
+        cliente &&
+        cliente.nombre &&
+        !cliente.latitud &&
+        !cliente.multipleSucursales;
 
-        // Caso 1: Cliente con múltiples sucursales
+      if (isNoGpsCase) {
+        setClienteActual(cliente.nombre);
+        setMensaje(`Cliente encontrado: ${cliente.nombre}`);
+        setClienteSinGps(cliente);
+        setModalNoGpsVisible(true);
+      } else if (response.ok) {
+        setClienteActual(cliente.nombre);
         if (cliente.multipleSucursales && cliente.sucursales) {
           setMensaje(
             `Cliente encontrado: ${cliente.nombre} (${cliente.sucursales.length} sucursales)`
           );
           setSucursales(cliente.sucursales);
           setModalVisible(true);
-          setCargando(false);
-        }
-        // Caso 2: Cliente con una sola ubicación
-        else if (cliente.latitud && cliente.longitud) {
+        } else if (cliente.latitud && cliente.longitud) {
           setMensaje(`Cliente encontrado: ${cliente.nombre}`);
           setClienteUnico(cliente);
           setConfirmModalVisible(true);
-          setCargando(false);
         } else {
-          throw new Error("Cliente encontrado pero sin coordenadas GPS");
+          throw new Error("Respuesta de API inesperada.");
         }
       } else {
         throw new Error(cliente.message || "Cliente no encontrado");
       }
     } catch (error: any) {
       const errorMessage = error.message || "Verifica tu conexión a internet.";
-      setMensaje(errorMessage);
+      setMensaje("Búsqueda fallida.");
       setErrorMensaje(errorMessage);
       setErrorModalVisible(true);
+    } finally {
       setCargando(false);
     }
   };
 
-  // 1. CREAMOS UN COMPONENTE AUXILIAR CON EL CONTENIDO DE LA PANTALLA
-  //    (Esto hace el código más limpio y evita repetir)
-  const ContenidoDeLaPantalla = () => (
-    <View style={styles.container}>
-      <View style={styles.headerContainer}>
-        <Text style={styles.title}>Buscador de Clientes</Text>
-        <Text style={styles.statusMessage}>{mensaje}</Text>
-      </View>
-
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Número de Cliente"
-          placeholderTextColor="#999"
-          keyboardType="numeric"
-          value={numeroCliente}
-          onChangeText={setNumeroCliente}
-          editable={!cargando}
-        />
-        {cargando ? (
-          <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingText}>Procesando...</Text>
-          </View>
-        ) : (
-          <TouchableOpacity
-            style={styles.button}
-            onPress={buscarCliente}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.buttonText}>Buscar y Navegar</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </View>
-  );
-
-  // 2. EN EL RETURN PRINCIPAL, USAMOS Platform.OS PARA LA CONDICIÓN
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : "padding"}
         style={styles.keyboardContainer}
       >
-        {/* Si la plataforma es 'web', muestra el contenido directamente */}
-        {Platform.OS === "web" ? (
-          <ContenidoDeLaPantalla />
-        ) : (
-          /* Si es móvil (iOS o Android), lo envuelve para poder cerrar el teclado */
-          <TouchableWithoutFeedback
-            onPress={Keyboard.dismiss}
-            accessible={false}
-          >
-            <ContenidoDeLaPantalla />
-          </TouchableWithoutFeedback>
-        )}
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={styles.container}>
+            <View style={styles.headerContainer}>
+              <Text style={styles.title}>Buscador de Clientes</Text>
+              <Text style={styles.statusMessage}>{mensaje}</Text>
+            </View>
+
+            <View style={styles.searchContainer}>
+              <TextInput
+                style={styles.input}
+                placeholder="Número de Cliente"
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+                value={numeroCliente}
+                onChangeText={setNumeroCliente}
+                editable={!cargando}
+              />
+              {cargando ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="large" color="#007AFF" />
+                  <Text style={styles.loadingText}>Procesando...</Text>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={styles.button}
+                  onPress={buscarCliente}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.buttonText}>Buscar y Navegar</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </TouchableWithoutFeedback>
       </KeyboardAvoidingView>
 
-      {/* Modal para seleccionar sucursal */}
+      {/* Modal to select a branch */}
       <Modal
         animationType="slide"
         transparent={true}
@@ -240,8 +235,14 @@ export default function IndexScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Selecciona una Sucursal</Text>
-            <Text style={styles.modalSubtitle}>{clienteActual}</Text>
+            <View style={styles.sucursalHeader}>
+              <Text style={styles.sucursalIcon}>​​​​​​​​​🌐​​​​​​</Text>
+              <Text style={styles.modalTitle}>Selecciona una Sucursal</Text>
+              <Text style={styles.modalSubtitle}>
+                Cliente:{" "}
+                <Text style={styles.clientSubtitle}>{clienteActual}</Text>
+              </Text>
+            </View>
 
             <ScrollView style={styles.sucursalList}>
               {sucursales.map((sucursal, index) => (
@@ -267,7 +268,10 @@ export default function IndexScreen() {
                       </Text>
                     )}
                   </View>
-                  <Text style={styles.sucursalFlecha}>→</Text>
+                  <Text style={styles.sucursalGo}>
+                    Ir
+                    <Text style={styles.sucursalFlecha}>→</Text>
+                  </Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -276,7 +280,6 @@ export default function IndexScreen() {
               style={styles.cancelButton}
               onPress={() => {
                 setModalVisible(false);
-                setCargando(false);
                 setMensaje("Búsqueda cancelada");
               }}
             >
@@ -286,7 +289,7 @@ export default function IndexScreen() {
         </View>
       </Modal>
 
-      {/* Modal de confirmación para cliente único */}
+      {/* Confirmation modal for single client */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -307,7 +310,6 @@ export default function IndexScreen() {
                 style={[styles.confirmButton, styles.confirmButtonSecondary]}
                 onPress={() => {
                   setConfirmModalVisible(false);
-                  setCargando(false);
                   setMensaje("Navegación cancelada");
                 }}
                 activeOpacity={0.7}
@@ -327,7 +329,70 @@ export default function IndexScreen() {
         </View>
       </Modal>
 
-      {/* Modal de error */}
+      {/* Modal for client without GPS */}
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={modalNoGpsVisible}
+        onRequestClose={() => setModalNoGpsVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.confirmModal}>
+            <Text style={styles.confirmIcon}>🛰️</Text>
+            <Text style={styles.confirmTitle}>Cliente sin GPS</Text>
+            <Text style={styles.confirmMessage}>
+              El cliente{" "}
+              <Text style={styles.confirmClientName}>
+                {clienteSinGps?.nombre}
+              </Text>{" "}
+              no tiene coordenadas GPS registradas.
+            </Text>
+
+            {clienteSinGps?.vendedorNombre && (
+              <View style={styles.vendedorInfoBox}>
+                <Text style={styles.vendedorLabel}>Vendedor Asignado:</Text>
+                <Text style={styles.vendedorNombre}>
+                  {clienteSinGps.vendedorNombre}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.phoneText}>Comunícate con el vendedor</Text>
+            {clienteSinGps?.vendedorTelefono ? (
+              <TouchableOpacity
+                style={styles.phoneButton}
+                onPress={() =>
+                  Linking.openURL(`tel:${clienteSinGps.vendedorTelefono}`)
+                }
+              >
+                <Text style={styles.phoneButtonText}>
+                  📞 Llamar a {clienteSinGps.vendedorTelefono}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={styles.noPhoneText}>
+                No se encontró un número de teléfono.
+              </Text>
+            )}
+
+            <View style={styles.confirmButtons}>
+              <TouchableOpacity
+                style={[
+                  styles.confirmButton,
+                  styles.confirmButtonPrimary,
+                  { width: "100%", marginTop: 12 },
+                ]}
+                onPress={() => setModalNoGpsVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.confirmButtonTextPrimary}>Entendido</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -357,7 +422,7 @@ export default function IndexScreen() {
         </View>
       </Modal>
 
-      {/* Modal de permisos de ubicación */}
+      {/* Location permissions modal */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -366,7 +431,7 @@ export default function IndexScreen() {
       >
         <View style={styles.modalOverlay}>
           <View style={styles.confirmModal}>
-            <Text style={styles.confirmIcon}>🔒</Text>
+            <Text style={styles.confirmIcon}>📍</Text>
             <Text style={styles.confirmTitle}>Permiso Requerido</Text>
             <Text style={styles.confirmMessage}>
               La navegación requiere acceso a tu ubicación. Por favor, activa
@@ -381,7 +446,6 @@ export default function IndexScreen() {
               >
                 <Text style={styles.confirmButtonTextSecondary}>Cancelar</Text>
               </TouchableOpacity>
-
               <TouchableOpacity
                 style={[styles.confirmButton, styles.confirmButtonPrimary]}
                 onPress={() => {
@@ -446,6 +510,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     paddingHorizontal: 20,
     fontSize: 18,
+    color: "#1a1a1a",
     textAlign: "center",
   },
   loadingContainer: {
@@ -463,7 +528,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 40,
     borderRadius: 28,
     marginTop: 24,
-    width: "70%",
+    width: "80%",
     alignItems: "center",
     shadowColor: "#007AFF",
     shadowOffset: {
@@ -488,8 +553,16 @@ const styles = StyleSheet.create({
     backgroundColor: "white",
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    padding: 24,
+    paddingHorizontal: 24,
+    paddingBottom: 24,
     maxHeight: "80%",
+  },
+  sucursalHeader: {
+    backgroundColor: "white",
+    alignItems: "center",
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingTop: 18,
   },
   modalTitle: {
     fontSize: 24,
@@ -503,6 +576,14 @@ const styles = StyleSheet.create({
     color: "#666",
     textAlign: "center",
     marginBottom: 24,
+  },
+  clientSubtitle: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#007AFF",
+    textAlign: "center",
+    marginBottom: 24,
+    textTransform: "uppercase",
   },
   sucursalList: {
     marginBottom: 16,
@@ -531,8 +612,13 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#666",
   },
+  sucursalGo: {
+    fontSize: 14,
+    color: "#007AFF",
+    marginLeft: 12,
+  },
   sucursalFlecha: {
-    fontSize: 24,
+    fontSize: 26,
     color: "#007AFF",
     marginLeft: 12,
   },
@@ -554,7 +640,11 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    maxHeight: "80%",
+    paddingBottom: 32,
+  },
+  sucursalIcon: {
+    fontSize: 56,
+    marginBottom: 16,
   },
   confirmIcon: {
     fontSize: 56,
@@ -579,7 +669,7 @@ const styles = StyleSheet.create({
     lineHeight: 24,
   },
   confirmClientName: {
-    fontWeight: "600",
+    fontWeight: "bold",
     color: "#007AFF",
   },
   confirmButtons: {
@@ -608,5 +698,50 @@ const styles = StyleSheet.create({
     color: "#666",
     fontSize: 16,
     fontWeight: "600",
+  },
+  vendedorInfoBox: {
+    backgroundColor: "#f0f0f0",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    width: "100%",
+  },
+  vendedorLabel: {
+    fontSize: 14,
+    color: "#666",
+    marginBottom: 4,
+  },
+  vendedorNombre: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1a1a1a",
+  },
+  phoneButton: {
+    backgroundColor: "#26ce2bff",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    width: "100%",
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  phoneText: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 4,
+  },
+  phoneButtonText: {
+    color: "#FFFFFF",
+    fontSize: 16,
+    fontWeight: "600",
+  },
+  noPhoneText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 16,
+    fontStyle: "italic",
   },
 });
