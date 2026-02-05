@@ -1,4 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
+import { Ionicons, MaterialCommunityIcons } from "@expo/vector-icons";
 import * as Location from "expo-location";
 import React, { useState } from "react";
 import {
@@ -16,7 +17,10 @@ import {
   TouchableWithoutFeedback,
   View,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from "react-native-safe-area-context";
 
 interface Sucursal {
   id: string;
@@ -40,9 +44,10 @@ interface ClienteResponse {
 }
 
 export default function IndexScreen() {
+  const insets = useSafeAreaInsets();
   const [numeroCliente, setNumeroCliente] = useState("");
   const [mensaje, setMensaje] = useState(
-    "Ingresa un número de cliente para buscar."
+    "Ingresa un número de cliente para buscar.",
   );
   const [cargando, setCargando] = useState(false);
   const [modalVisible, setModalVisible] = useState(false);
@@ -53,10 +58,10 @@ export default function IndexScreen() {
   const [sucursales, setSucursales] = useState<Sucursal[]>([]);
   const [clienteActual, setClienteActual] = useState<string>("");
   const [clienteUnico, setClienteUnico] = useState<ClienteResponse | null>(
-    null
+    null,
   );
   const [clienteSinGps, setClienteSinGps] = useState<ClienteResponse | null>(
-    null
+    null,
   );
   const [errorMensaje, setErrorMensaje] = useState("");
 
@@ -82,7 +87,7 @@ export default function IndexScreen() {
 
   const abrirGoogleMapsNavegacion = (
     origen: { latitude: number; longitude: number },
-    destino: { latitud: number; longitud: number }
+    destino: { latitud: number; longitud: number },
   ) => {
     const url = Platform.select({
       ios: `https://www.google.com/maps/dir/?api=1&origin=${origen.latitude},${origen.longitude}&destination=${destino.latitud},${destino.longitud}&travelmode=driving`,
@@ -97,8 +102,26 @@ export default function IndexScreen() {
     }
   };
 
+  const abrirGoogleMapsMarcador = (destino: {
+    latitud: number;
+    longitud: number;
+  }) => {
+    const url = Platform.select({
+      ios: `maps://?q=${destino.latitud},${destino.longitud}`,
+      android: `geo:0,0?q=${destino.latitud},${destino.longitud}`,
+      default: `https://www.google.com/maps/search/?api=1&query=${destino.latitud},${destino.longitud}`,
+    });
+
+    if (url) {
+      Linking.openURL(url).catch(() => {
+        setErrorMensaje("No se pudo abrir el mapa.");
+        setErrorModalVisible(true);
+      });
+    }
+  };
+
   const iniciarNavegacionASucursal = async (sucursal: Sucursal) => {
-    setModalVisible(false);
+    // setModalVisible(false);
     setCargando(true);
 
     const destinoTexto = sucursal.nombreSucursal
@@ -115,7 +138,7 @@ export default function IndexScreen() {
   };
 
   const iniciarNavegacionClienteUnico = async () => {
-    setConfirmModalVisible(false);
+    // setConfirmModalVisible(false);
     if (!clienteUnico) return;
 
     setCargando(true);
@@ -160,7 +183,7 @@ export default function IndexScreen() {
         setClienteActual(cliente.nombre);
         if (cliente.multipleSucursales && cliente.sucursales) {
           setMensaje(
-            `Cliente encontrado: ${cliente.nombre} (${cliente.sucursales.length} sucursales)`
+            `Cliente encontrado: ${cliente.nombre} (${cliente.sucursales.length} sucursales)`,
           );
           setSucursales(cliente.sucursales);
           setModalVisible(true);
@@ -218,7 +241,7 @@ export default function IndexScreen() {
                   onPress={buscarCliente}
                   activeOpacity={0.7}
                 >
-                  <Text style={styles.buttonText}>Buscar y Navegar</Text>
+                  <Text style={styles.buttonText}>Buscar Cliente</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -234,7 +257,12 @@ export default function IndexScreen() {
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
+          <View
+            style={[
+              styles.modalContainer,
+              { paddingBottom: insets.bottom > 0 ? insets.bottom + 10 : 24 },
+            ]}
+          >
             <View style={styles.sucursalHeader}>
               <Text style={styles.sucursalIcon}>​​​​​​​​​🗺️​​​​​​</Text>
               <Text style={styles.modalTitle}>Selecciona una Sucursal</Text>
@@ -246,33 +274,48 @@ export default function IndexScreen() {
 
             <ScrollView style={styles.sucursalList}>
               {sucursales.map((sucursal, index) => (
-                <TouchableOpacity
+                <View
                   key={`${sucursal.numeroSucursal}-${index}`}
-                  style={styles.sucursalItem}
-                  onPress={() => iniciarNavegacionASucursal(sucursal)}
-                  activeOpacity={0.7}
+                  style={styles.sucursalCard}
                 >
                   <View style={styles.sucursalInfo}>
-                    {sucursal.nombreSucursal ? (
-                      <>
-                        <Text style={styles.sucursalNombre}>
-                          {sucursal.nombreSucursal}
-                        </Text>
-                        <Text style={styles.sucursalNumero}>
-                          Sucursal #{sucursal.numeroSucursal}
-                        </Text>
-                      </>
-                    ) : (
-                      <Text style={styles.sucursalNombre}>
-                        Ubicación Principal
-                      </Text>
-                    )}
+                    <Text style={styles.sucursalNombre}>
+                      {sucursal.nombreSucursal || "Ubicación Principal"}{" "}
+                    </Text>
+                    <Text style={styles.sucursalNumero}>
+                      Sucursal #{sucursal.numeroSucursal}
+                    </Text>
                   </View>
-                  <Text style={styles.sucursalGo}>
-                    Ir
-                    <Text style={styles.sucursalFlecha}>→</Text>
-                  </Text>
-                </TouchableOpacity>
+
+                  <View style={styles.sucursalActionButtons}>
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.mapButton]}
+                      onPress={() => {
+                        // setModalVisible(false);
+                        abrirGoogleMapsMarcador(sucursal);
+                      }}
+                    >
+                      <Ionicons
+                        name="location-sharp"
+                        size={20}
+                        color="#007AFF"
+                      />
+                      <Text style={styles.mapButtonText}>Ver Mapa</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      style={[styles.actionButton, styles.navButton]}
+                      onPress={() => iniciarNavegacionASucursal(sucursal)}
+                    >
+                      <MaterialCommunityIcons
+                        name="directions"
+                        size={20}
+                        color="#ffffff"
+                      />
+                      <Text style={styles.navButtonText}>Buscar Ruta</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               ))}
             </ScrollView>
 
@@ -297,7 +340,12 @@ export default function IndexScreen() {
         onRequestClose={() => setConfirmModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.confirmModal}>
+          <View
+            style={[
+              styles.confirmModal,
+              { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 32 },
+            ]}
+          >
             <Text style={styles.confirmIcon}>📍</Text>
             <Text style={styles.confirmTitle}>Cliente Encontrado</Text>
             <Text style={styles.confirmMessage}>
@@ -305,24 +353,40 @@ export default function IndexScreen() {
               <Text style={styles.confirmClientName}>{clienteActual}</Text>?
             </Text>
 
-            <View style={styles.confirmButtons}>
+            <View style={styles.confirmButtonsColumn}>
               <TouchableOpacity
-                style={[styles.confirmButton, styles.confirmButtonSecondary]}
-                onPress={() => {
-                  setConfirmModalVisible(false);
-                  setMensaje("Navegación cancelada");
-                }}
-                activeOpacity={0.7}
+                style={[styles.bigButton, styles.primaryBigButton]}
+                onPress={iniciarNavegacionClienteUnico}
               >
-                <Text style={styles.confirmButtonTextSecondary}>Cancelar</Text>
+                <MaterialCommunityIcons
+                  name="directions"
+                  size={20}
+                  color="#ffffff"
+                />
+                <Text style={styles.primaryBigButtonText}>Buscar Ruta</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.confirmButton, styles.confirmButtonPrimary]}
-                onPress={iniciarNavegacionClienteUnico}
-                activeOpacity={0.7}
+                style={[styles.bigButton, styles.secondaryBigButton]}
+                onPress={() => {
+                  // setConfirmModalVisible(false);
+                  if (clienteUnico?.latitud && clienteUnico?.longitud) {
+                    abrirGoogleMapsMarcador({
+                      latitud: clienteUnico.latitud,
+                      longitud: clienteUnico.longitud,
+                    });
+                  }
+                }}
               >
-                <Text style={styles.confirmButtonTextPrimary}>Navegar</Text>
+                <Ionicons name="location-sharp" size={20} color="#007AFF" />
+                <Text style={styles.secondaryBigButtonText}>Abrir Mapa</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.closeLink}
+                onPress={() => setConfirmModalVisible(false)}
+              >
+                <Text style={styles.closeLinkText}>Cerrar</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -337,7 +401,12 @@ export default function IndexScreen() {
         onRequestClose={() => setModalNoGpsVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.confirmModal}>
+          <View
+            style={[
+              styles.confirmModal,
+              { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 32 },
+            ]}
+          >
             <Text style={styles.confirmIcon}>🛰️</Text>
             <Text style={styles.confirmTitle}>Cliente sin GPS</Text>
             <Text style={styles.confirmMessage}>
@@ -400,7 +469,12 @@ export default function IndexScreen() {
         onRequestClose={() => setErrorModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.confirmModal}>
+          <View
+            style={[
+              styles.confirmModal,
+              { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 32 },
+            ]}
+          >
             <Text style={styles.errorIcon}>⚠️</Text>
             <Text style={styles.confirmTitle}>Error</Text>
             <Text style={styles.confirmMessage}>{errorMensaje}</Text>
@@ -430,7 +504,12 @@ export default function IndexScreen() {
         onRequestClose={() => setPermisosModalVisible(false)}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.confirmModal}>
+          <View
+            style={[
+              styles.confirmModal,
+              { paddingBottom: insets.bottom > 0 ? insets.bottom + 20 : 32 },
+            ]}
+          >
             <Text style={styles.confirmIcon}>📍</Text>
             <Text style={styles.confirmTitle}>Permiso Requerido</Text>
             <Text style={styles.confirmMessage}>
@@ -554,8 +633,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     paddingHorizontal: 24,
-    paddingBottom: 24,
-    maxHeight: "80%",
+    maxHeight: "90%",
   },
   sucursalHeader: {
     backgroundColor: "white",
@@ -600,7 +678,9 @@ const styles = StyleSheet.create({
     borderColor: "#e9ecef",
   },
   sucursalInfo: {
-    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   sucursalNombre: {
     fontSize: 18,
@@ -640,7 +720,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: 24,
-    paddingBottom: 32,
+    width: "100%",
   },
   sucursalIcon: {
     fontSize: 56,
@@ -743,5 +823,94 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 16,
     fontStyle: "italic",
+  },
+
+  sucursalCard: {
+    backgroundColor: "#ffffff",
+    borderRadius: 16,
+    padding: 14,
+    marginBottom: 14,
+    borderWidth: 1,
+    borderColor: "#e0e0e0",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+  },
+  sucursalActionButtons: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 8,
+  },
+  actionButton: {
+    flex: 1,
+    height: 45,
+    borderRadius: 10,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  mapButton: {
+    flexDirection: "row",
+    gap: 6,
+    backgroundColor: "#f5fbff",
+    borderWidth: 1,
+    borderColor: "#007AFF",
+  },
+  mapButtonText: {
+    color: "#007AFF",
+    fontWeight: "600",
+  },
+  navButton: {
+    flexDirection: "row",
+    gap: 6,
+    backgroundColor: "#007AFF",
+  },
+  navButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "600",
+  },
+
+  confirmButtonsColumn: {
+    width: "100%",
+    gap: 12,
+  },
+  bigButton: {
+    width: "100%",
+    height: 56,
+    borderRadius: 14,
+    justifyContent: "center",
+    alignItems: "center",
+    flexDirection: "row",
+    gap: 8,
+    paddingHorizontal: 10,
+  },
+  primaryBigButton: {
+    backgroundColor: "#007AFF",
+  },
+  primaryBigButtonText: {
+    color: "#FFFFFF",
+    fontSize: 17,
+    fontWeight: "bold",
+  },
+  secondaryBigButton: {
+    backgroundColor: "#f5fbff",
+    borderWidth: 1,
+    borderColor: "#007AFF",
+  },
+  secondaryBigButtonText: {
+    color: "#007AFF",
+    fontSize: 17,
+    fontWeight: "bold",
+  },
+  closeLink: {
+    marginTop: 8,
+    alignItems: "center",
+    padding: 10,
+  },
+  closeLinkText: {
+    color: "#666",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
