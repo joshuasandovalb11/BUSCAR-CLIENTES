@@ -8,6 +8,9 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "env": {
+        "APP_VARIANT": "development"
+      },
       "android": {
         "buildType": "apk"
       }
@@ -15,6 +18,11 @@
     "preview": {
       "distribution": "internal",
       "channel": "preview",
+      "env": {
+        "APP_VARIANT": "preview",
+        "EXPO_PUBLIC_WS_URL": "http://200.94.8.242:3001",
+        "EXPO_PUBLIC_API_URL": "https://backend-clientes-neon.vercel.app/api"
+      },
       "android": {
         "buildType": "apk"
       },
@@ -24,6 +32,10 @@
     },
     "production": {
       "channel": "production",
+      "env": {
+        "EXPO_PUBLIC_WS_URL": "http://200.94.8.242:3001",
+        "EXPO_PUBLIC_API_URL": "https://backend-clientes-neon.vercel.app/api"
+      },
       "android": {
         "buildType": "app-bundle"
       }
