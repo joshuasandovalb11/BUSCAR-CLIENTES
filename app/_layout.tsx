@@ -1,22 +1,22 @@
 /* eslint-disable react-hooks/exhaustive-deps */
-import { getSessionToken, clearSessionToken } from "../utils/storage";
-import * as Cellular from "expo-cellular";
-import * as BackgroundTask from "expo-background-task";
-import "expo-dev-client";
-import { Stack, useRouter } from "expo-router";
-import { StatusBar } from "expo-status-bar";
-import React, { useEffect, useState, useRef } from "react";
-import { ActivityIndicator, StyleSheet, View, AppState } from "react-native";
-import { OTAUpdater } from "../components/OTAUpdater";
-import { useFonts } from "expo-font";
 import { Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Roboto_400Regular, Roboto_500Medium } from "@expo-google-fonts/roboto";
+import * as BackgroundTask from "expo-background-task";
+import * as Cellular from "expo-cellular";
+import "expo-dev-client";
+import { useFonts } from "expo-font";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-
+import { StatusBar } from "expo-status-bar";
+import React, { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
+import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
+import { connectSocketWithAuth } from "../services/socket";
 import { SYNC_RUTAS_TASK } from "../services/sync";
 import "../services/tracking";
+import { clearSessionToken, getSessionToken } from "../utils/storage";
 
 initDB();
 
@@ -95,6 +95,9 @@ export default function RootLayout() {
           setTimeout(() => router.replace("/activacion"), 50);
           return;
         }
+
+        // Arrancamos la conexión en tiempo real usando el token JWT
+        connectSocketWithAuth();
 
         await inicializarRastreoSilencioso();
 

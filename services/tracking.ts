@@ -1,6 +1,6 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import { getDeviceUuid } from '../utils/storage';
 import { insertarUbicacion } from './database';
 import socket from './socket';
 
@@ -31,10 +31,7 @@ let geofenceNotSupported = false;
 let cachedDeviceId: string | null = null;
 (async () => {
   try {
-    const boveda = await AsyncStorage.getItem('@boveda_activacion');
-    if (boveda) {
-      cachedDeviceId = JSON.parse(boveda).id_dispositivo;
-    }
+    cachedDeviceId = await getDeviceUuid();
   } catch (e) {
     console.error("Error inicializando caché de Device ID:", e);
   }
@@ -84,18 +81,18 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       // 2. Transición de Estados
       if (speedKmh <= 4) {
         consecutiveMovingCount = 0;
-        
+
         if (estadoActual === 'MOVIMIENTO') {
           if (!stationaryStartTime) {
             stationaryStartTime = timestamp;
           }
-          
+
           if (timestamp - stationaryStartTime >= 120000) {
             // Pasaron 2 minutos de forma sostenida <= 4 km/h
             console.log("¡ESTADO ESTACIONARIO DETECTADO! Intentando ahorrar batería...");
             estadoActual = 'ESTACIONARIO';
             stationaryStartTime = null;
-            
+
             if (!geofenceNotSupported) {
               try {
                 await Location.startGeofencingAsync(GEOFENCE_TASK, [{
@@ -106,7 +103,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
                   notifyOnEnter: false,
                   notifyOnExit: true,
                 }]);
-                
+
                 await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
               } catch (err) {
                 console.warn("Geofencing falló en background (Bug nativo Android SharedPreferences). Activando Fallback de JS...", err);
@@ -118,7 +115,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       } else {
         // Velocidad > 4 km/h
         stationaryStartTime = null;
-        
+
         if (estadoActual === 'ESTACIONARIO') {
           consecutiveMovingCount++;
           if (consecutiveMovingCount >= 2) {
@@ -141,7 +138,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
         // Filtro de Tiempo: cada 30 segundos (30000 ms)
         if (timestamp - ultimoTimestampGuardado >= 30000) {
           debeGuardar = true;
-        } 
+        }
         // Filtro de Giro: si la velocidad > 5 km/h y el rumbo cambió >= 15 grados
         else if (speedKmh > 5 && heading !== null) {
           const headingDiff = Math.abs(heading - ultimoHeadingGuardado);
@@ -172,7 +169,7 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
     try {
       await Location.stopGeofencingAsync(GEOFENCE_TASK);
       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, TRACKING_OPTIONS);
-      
+
       // Forzar el estado a movimiento y reiniciar contadores
       estadoActual = 'MOVIMIENTO';
       consecutiveMovingCount = 2; // Forzar que ya se asuma movimiento

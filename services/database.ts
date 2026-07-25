@@ -11,6 +11,9 @@ try {
 }
 
 export const initDB = () => {
+  // Activar modo WAL (Write-Ahead Logging) para permitir lecturas y escrituras concurrentes sin bloquear
+  db.execSync('PRAGMA journal_mode = WAL;');
+  
   db.execSync(
     'CREATE TABLE IF NOT EXISTS ubicaciones (id INTEGER PRIMARY KEY AUTOINCREMENT, latitud REAL, longitud REAL, velocidad REAL, timestamp INTEGER);'
   );
@@ -34,10 +37,14 @@ export const contarUbicaciones = (): number => {
 
 export const limpiarUbicaciones = () => {
   db.runSync('DELETE FROM ubicaciones');
+  // Reclamar espacio físico en el disco duro del celular
+  db.execSync('VACUUM');
 };
 
 export const limpiarUbicacionesPorIds = (ids: number[]) => {
   if (ids.length === 0) return;
   const placeholders = ids.map(() => '?').join(',');
   db.runSync(`DELETE FROM ubicaciones WHERE id IN (${placeholders})`, ids);
+  // Reclamar espacio físico en el disco duro después de borrar el lote
+  db.execSync('VACUUM');
 };

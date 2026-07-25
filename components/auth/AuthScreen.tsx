@@ -250,7 +250,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({
                   Tu teléfono ha quedado registrado exitosamente y puedes comenzar a registrar clientes.
                 </Text>
                 <TouchableOpacity style={styles.authButton} onPress={onContinueToForm}>
-                  <Text style={styles.authButtonText}>Ir al Formulario</Text>
+                  <Text style={styles.authButtonText}>Ir a la aplicación</Text>
                   <Feather name="arrow-right" size={16} color={"#FFFFFF"} />
                 </TouchableOpacity>
               </View>

@@ -36,7 +36,7 @@ export default function ActivacionScreen() {
     setAuthIsLoading(true);
     try {
       Keyboard.dismiss();
-      try { await resetSms(userPhoneNumber, APP_ID); } catch (e) { /* ignorar si falla el reset */ }
+      try { await resetSms(userPhoneNumber, APP_ID); } catch { /* ignorar si falla el reset */ }
       await requestSms(userPhoneNumber, APP_ID);
       setStep('pin');
     } catch (error: any) {
@@ -60,7 +60,7 @@ export default function ActivacionScreen() {
       const result = await verifyPin(userPhoneNumber, APP_ID, pinCode, deviceUuid, deviceModel);
 
       // Guardar sesión y datos de usuario
-      await setSessionToken(result.token_sesion);
+      await setSessionToken(result.token);
 
       const sName = result.user?.nombre || "Vendedor";
       await setUserInfo(sName, userPhoneNumber);
@@ -102,7 +102,7 @@ export default function ActivacionScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: "#F8FAFC" }}>
       <Stack.Screen options={{ headerShown: false }} />
-      
+
       <AuthScreen
         step={step}
         userPhoneNumber={userPhoneNumber}

@@ -27,7 +27,6 @@ const resolveApiUrl = async (): Promise<string> => {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 1200);
 
-    // Hacemos una petición rápida para ver si el servidor local (vercel dev) está vivo
     await fetch(localUrl, { method: "GET", signal: controller.signal });
     clearTimeout(timeoutId);
 
@@ -52,7 +51,7 @@ async function fetchWithConfig(endpoint: string, options: RequestInit = {}) {
   console.log(`[API Request] ${method} ${endpoint}`);
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15000ms timeout
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   const token = await getSessionToken();
 
@@ -109,7 +108,7 @@ export const requestSms = async (telefono: string, idApp: number) => {
 
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || "Error al solicitar SMS.");
+    throw new Error(result.error || result.message || "Error al solicitar SMS.");
   }
   return result;
 };
@@ -123,7 +122,7 @@ export const verifyPin = async (telefono: string, idApp: number, pin: string, de
 
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || "PIN incorrecto o expirado.");
+    throw new Error(result.error || result.message || "PIN incorrecto o expirado.");
   }
   return result;
 };
@@ -134,7 +133,11 @@ export const resetSms = async (telefono: string, idApp: number) => {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ telefono, id_app: idApp }),
   });
-  return response.json();
+  const result = await response.json();
+  if (!response.ok) {
+    throw new Error(result.error || result.message || "Error al resetear SMS.");
+  }
+  return result;
 };
 
 export const resendSms = async (telefono: string, idApp: number) => {
@@ -146,7 +149,7 @@ export const resendSms = async (telefono: string, idApp: number) => {
 
   const result = await response.json();
   if (!response.ok) {
-    throw new Error(result.error || "Error al reenviar SMS.");
+    throw new Error(result.error || result.message || "Error al reenviar SMS.");
   }
   return result;
 };
