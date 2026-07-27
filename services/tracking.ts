@@ -1,5 +1,6 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
+import BackgroundService from 'react-native-background-actions';
 import { getDeviceUuid } from '../utils/storage';
 import { insertarUbicacion } from './database';
 import socket from './socket';
@@ -179,3 +180,46 @@ TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
     }
   }
 });
+
+const sleep = (time: number) => new Promise<void>((resolve) => setTimeout(() => resolve(), time));
+
+const zombieTask = async (taskDataArguments: any) => {
+  console.log("🧟 [Zombie Tracker] Servicio Nativo Persistente Iniciado.");
+  
+  try {
+    const hasStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+    if (!hasStarted) {
+       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, TRACKING_OPTIONS);
+    }
+  } catch (e) {
+    console.error("Error arrancando expo-location desde zombie:", e);
+  }
+
+  // Mantiene vivo el puente JS infinitamente (incluso si deslizan la app)
+  while (BackgroundService.isRunning()) {
+      await sleep(10000);
+  }
+};
+
+export const initPersistentTracker = async () => {
+  const options = {
+      taskName: 'RastreoGPS',
+      taskTitle: 'Buscando clientes',
+      taskDesc: 'Sincronizando ruta...',
+      taskIcon: {
+          name: 'ic_launcher',
+          type: 'mipmap',
+      },
+      color: '#007AFF',
+      parameters: { delay: 10000 },
+  };
+
+  try {
+    if (!BackgroundService.isRunning()) {
+      await BackgroundService.start(zombieTask, options);
+    }
+  } catch (error) {
+    console.error("Error inicializando BackgroundService:", error);
+  }
+};
+

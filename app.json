@@ -2,7 +2,7 @@
   "expo": {
     "name": "Buscar clientes",
     "slug": "Buscar-clientes",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/clientsearch.png",
     "scheme": "buscarclientes",
@@ -22,6 +22,7 @@
         "backgroundColor": "#ffffff"
       },
       "package": "com.erick.sandoval10.Buscarclientes",
+      "versionCode": 2,
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
         "ACCESS_COARSE_LOCATION",
@@ -29,7 +30,8 @@
         "ACCESS_BACKGROUND_LOCATION",
         "FOREGROUND_SERVICE",
         "FOREGROUND_SERVICE_LOCATION",
-        "REQUEST_INSTALL_PACKAGES"
+        "REQUEST_INSTALL_PACKAGES",
+        "WAKE_LOCK"
       ]
     },
     "androidNavigationBar": {
