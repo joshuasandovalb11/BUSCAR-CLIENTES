@@ -1,35 +1,18 @@
 import * as Location from 'expo-location';
-import * as TaskManager from 'expo-task-manager';
 import BackgroundService from 'react-native-background-actions';
 import { getDeviceUuid } from '../utils/storage';
 import { insertarUbicacion } from './database';
 import socket from './socket';
 
-export const BACKGROUND_LOCATION_TASK = 'background-location-task';
-export const GEOFENCE_TASK = 'background-geofence-task';
-
-export const TRACKING_OPTIONS = {
-  accuracy: Location.Accuracy.High,
-  distanceInterval: 10,
-  deferredUpdatesInterval: 10000,
-  deferredUpdatesDistance: 10,
-  showsBackgroundLocationIndicator: false,
-  foregroundService: {
-    notificationTitle: "Buscando clientes",
-    notificationBody: "Optimizando la ruta...",
-    notificationColor: "#007AFF",
-  },
-};
-
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
 let consecutiveMovingCount = 0;
-let stationaryStartTime: number | null = null;
+let consecutiveStationaryCount = 0;
 let ultimoTimestampGuardado = 0;
 let ultimoHeadingGuardado = 0;
-let geofenceNotSupported = false;
 
 let cachedDeviceId: string | null = null;
+
 (async () => {
   try {
     cachedDeviceId = await getDeviceUuid();
@@ -39,12 +22,9 @@ let cachedDeviceId: string | null = null;
 })();
 
 const emitirTiempoReal = async (location: Location.LocationObject) => {
-  console.log('📡 [Tracker] Coordenada detectada por el GPS del teléfono:', location.coords.latitude, location.coords.longitude);
+  console.log('📡 [Tracker] Coordenada detectada en vivo:', location.coords.latitude, location.coords.longitude);
 
-  if (!cachedDeviceId) {
-    console.error('❌ [Tracker] ABORTO: cachedDeviceId es undefined o nulo. No se puede emitir al socket.');
-    return;
-  }
+  if (!cachedDeviceId) return;
 
   const payload = {
     d: cachedDeviceId,
@@ -54,150 +34,111 @@ const emitirTiempoReal = async (location: Location.LocationObject) => {
     hd: Math.round(location.coords.heading ?? 0)
   };
 
-  console.log('🚀 [Tracker] Emitiendo payload al Socket:', payload);
   socket.emit('ubicacion_tiempo_real', payload);
 };
 
-TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
-  if (error || !data) return;
-
-  const { locations } = data as { locations: Location.LocationObject[] };
-
-  for (const location of locations) {
-    // 1. Guardián de Inexactitud (Accuracy Guard)
-    if ((location.coords.accuracy || 0) > 30) {
-      continue;
-    }
-
-    const { latitude, longitude, speed: rawSpeed, heading } = location.coords;
-    const timestamp = location.timestamp;
-    const speedKmh = (rawSpeed ?? 0) * 3.6;
-
-    try {
-      emitirTiempoReal(location).catch(() => { });
-    } catch {
-    }
-
-    try {
-      // 2. Transición de Estados
-      if (speedKmh <= 4) {
-        consecutiveMovingCount = 0;
-
-        if (estadoActual === 'MOVIMIENTO') {
-          if (!stationaryStartTime) {
-            stationaryStartTime = timestamp;
-          }
-
-          if (timestamp - stationaryStartTime >= 120000) {
-            // Pasaron 2 minutos de forma sostenida <= 4 km/h
-            console.log("¡ESTADO ESTACIONARIO DETECTADO! Intentando ahorrar batería...");
-            estadoActual = 'ESTACIONARIO';
-            stationaryStartTime = null;
-
-            if (!geofenceNotSupported) {
-              try {
-                await Location.startGeofencingAsync(GEOFENCE_TASK, [{
-                  identifier: 'stop-geofence',
-                  latitude,
-                  longitude,
-                  radius: 100,
-                  notifyOnEnter: false,
-                  notifyOnExit: true,
-                }]);
-
-                await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-              } catch (err) {
-                console.warn("Geofencing falló en background (Bug nativo Android SharedPreferences). Activando Fallback de JS...", err);
-                geofenceNotSupported = true;
-              }
-            }
-          }
-        }
-      } else {
-        // Velocidad > 4 km/h
-        stationaryStartTime = null;
-
-        if (estadoActual === 'ESTACIONARIO') {
-          consecutiveMovingCount++;
-          if (consecutiveMovingCount >= 2) {
-            console.log("¡ESTADO MOVIMIENTO DETECTADO! Reactivando captura híbrida...");
-            estadoActual = 'MOVIMIENTO';
-            // Si estuviéramos pausados por la geocerca, la geocerca ya nos habría despertado, pero esto cubre el caso Fallback JS.
-          }
-        }
-      }
-
-      // 3. Lógica de Guardado (Filtro Híbrido)
-      let debeGuardar = false;
-
-      if (estadoActual === 'ESTACIONARIO') {
-        // Heartbeat: 1 punto cada 60 minutos (3600000 ms)
-        if (timestamp - ultimoTimestampGuardado >= 3600000) {
-          debeGuardar = true;
-        }
-      } else if (estadoActual === 'MOVIMIENTO') {
-        // Filtro de Tiempo: cada 30 segundos (30000 ms)
-        if (timestamp - ultimoTimestampGuardado >= 30000) {
-          debeGuardar = true;
-        }
-        // Filtro de Giro: si la velocidad > 5 km/h y el rumbo cambió >= 15 grados
-        else if (speedKmh > 5 && heading !== null) {
-          const headingDiff = Math.abs(heading - ultimoHeadingGuardado);
-          if (headingDiff >= 15) {
-            debeGuardar = true;
-          }
-        }
-      }
-
-      if (debeGuardar) {
-        insertarUbicacion(latitude, longitude, speedKmh, timestamp);
-        ultimoTimestampGuardado = timestamp;
-        ultimoHeadingGuardado = heading ?? 0;
-      }
-
-    } catch (e) {
-      console.error("Fallo guardando en SQLite:", e);
-    }
+const procesarUbicacion = (location: Location.LocationObject) => {
+  // 1. Guardián de Inexactitud (Filtro relajado para transporte: 100 metros)
+  if ((location.coords.accuracy || 0) > 100) {
+    console.log("⚠️ Punto descartado por baja precisión (> 100m)");
+    return;
   }
-});
 
-TaskManager.defineTask(GEOFENCE_TASK, async ({ data, error }) => {
-  if (error) return;
-  const { eventType } = data as { eventType: Location.GeofencingEventType };
+  const { latitude, longitude, speed: rawSpeed, heading } = location.coords;
+  const timestamp = location.timestamp;
+  const speedKmh = (rawSpeed ?? 0) * 3.6;
 
-  if (eventType === Location.GeofencingEventType.Exit) {
-    console.log("¡GEOCERCA ROTA! Reiniciando GPS de alta precisión y cambiando a MOVIMIENTO...");
-    try {
-      await Location.stopGeofencingAsync(GEOFENCE_TASK);
-      await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, TRACKING_OPTIONS);
+  // Emitir al instante para el Socket (visualizador de supervisores)
+  try {
+    emitirTiempoReal(location).catch(() => { });
+  } catch {}
 
-      // Forzar el estado a movimiento y reiniciar contadores
+  // 2. Máquina de Estados Híbrida (Puramente basada en telemetría en vivo)
+  if (speedKmh <= 4) {
+    consecutiveMovingCount = 0;
+    consecutiveStationaryCount++;
+
+    // Requiere 10 lecturas estacionarias (~20 segundos quietos) para declararse en ESTACIONARIO
+    if (estadoActual === 'MOVIMIENTO' && consecutiveStationaryCount >= 10) {
+      console.log("¡ESTADO ESTACIONARIO DETECTADO!");
+      estadoActual = 'ESTACIONARIO';
+    }
+  } else {
+    consecutiveStationaryCount = 0;
+    consecutiveMovingCount++;
+
+    if (estadoActual === 'ESTACIONARIO' && consecutiveMovingCount >= 2) {
+      console.log("¡ESTADO MOVIMIENTO DETECTADO!");
       estadoActual = 'MOVIMIENTO';
-      consecutiveMovingCount = 2; // Forzar que ya se asuma movimiento
-      stationaryStartTime = null;
-    } catch (e) {
-      console.error("Error al reactivar el GPS:", e);
     }
   }
-});
+
+  // 3. Lógica de Guardado para SQLite (Historial de Ruta)
+  let debeGuardar = false;
+
+  if (estadoActual === 'ESTACIONARIO') {
+    // Heartbeat: 1 punto cada 60 minutos (3600000 ms)
+    if (timestamp - ultimoTimestampGuardado >= 3600000) {
+      debeGuardar = true;
+    }
+  } else if (estadoActual === 'MOVIMIENTO') {
+    // Filtro de Tiempo: cada 30 segundos (30000 ms)
+    if (timestamp - ultimoTimestampGuardado >= 30000) {
+      debeGuardar = true;
+    }
+    // Filtro de Giro: si la velocidad > 5 km/h y el rumbo cambió >= 15 grados
+    else if (speedKmh > 5 && heading !== null) {
+      const headingDiff = Math.abs(heading - ultimoHeadingGuardado);
+      if (headingDiff >= 15) {
+        debeGuardar = true;
+      }
+    }
+  }
+
+  // Guardado Atómico Inicial (El primer punto siempre se guarda)
+  if (ultimoTimestampGuardado === 0) debeGuardar = true;
+
+  if (debeGuardar) {
+    insertarUbicacion(latitude, longitude, speedKmh, timestamp);
+    ultimoTimestampGuardado = timestamp;
+    ultimoHeadingGuardado = heading ?? 0;
+    console.log("💾 Punto GUARDADO en base de datos SQLite.");
+  }
+};
 
 const sleep = (time: number) => new Promise<void>((resolve) => setTimeout(() => resolve(), time));
 
 const zombieTask = async (taskDataArguments: any) => {
   console.log("🧟 [Zombie Tracker] Servicio Nativo Persistente Iniciado.");
   
+  let locationSubscription: Location.LocationSubscription | null = null;
+
   try {
-    const hasStarted = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-    if (!hasStarted) {
-       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, TRACKING_OPTIONS);
-    }
+    // Iniciamos la captura en PRIMER PLANO directamente dentro del hilo Zombie
+    locationSubscription = await Location.watchPositionAsync(
+      {
+        accuracy: Location.Accuracy.High, // Alta precisión
+        distanceInterval: 5,              // Pide un punto nuevo cada 5 metros
+        timeInterval: 2000,               // O pide un punto cada 2 segundos si estamos quietos
+      },
+      (location) => {
+        procesarUbicacion(location);
+      }
+    );
+    console.log("✅ Watcher de GPS anclado exitosamente al hilo Zombie.");
   } catch (e) {
-    console.error("Error arrancando expo-location desde zombie:", e);
+    console.error("Error arrancando GPS Watcher desde zombie:", e);
   }
 
   // Mantiene vivo el puente JS infinitamente (incluso si deslizan la app)
   while (BackgroundService.isRunning()) {
-      await sleep(10000);
+      await sleep(10000); // Duerme 10 segundos para no ahogar el CPU del dispositivo
+  }
+
+  // Limpieza si el usuario cierra sesión y apaga el BackgroundService desde index.tsx
+  if (locationSubscription) {
+    locationSubscription.remove();
+    console.log("🛑 Watcher de GPS destruido exitosamente.");
   }
 };
 
@@ -205,12 +146,12 @@ export const initPersistentTracker = async () => {
   const options = {
       taskName: 'RastreoGPS',
       taskTitle: 'Buscando clientes',
-      taskDesc: 'Sincronizando ruta...',
+      taskDesc: 'Optimizando ruta y sincronizando...',
       taskIcon: {
-          name: 'ic_launcher',
+          name: 'ic_launcher', // Usa el ícono nativo de Android
           type: 'mipmap',
       },
-      color: '#007AFF',
+      color: '#007AFF', // Azul corporativo
       parameters: { delay: 10000 },
   };
 

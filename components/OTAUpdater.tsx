@@ -2,7 +2,7 @@ import * as Application from 'expo-application';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, Modal, StyleSheet, Text, TouchableOpacity, View, Platform, AppState, AppStateStatus } from 'react-native';
+import { ActivityIndicator, AppState, AppStateStatus, Modal, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
 interface UpdateManifest {
   version: string;
@@ -20,11 +20,12 @@ export const OTAUpdater = () => {
   const [errorMsg, setErrorMsg] = useState("");
 
   const checkUpdate = async () => {
-    if (Platform.OS !== 'android') return; // Sideloading nativo solo funciona en Android
+    if (__DEV__) return;
+    if (Platform.OS !== 'android') return;
 
     try {
       const response = await fetch('http://toolsdemexico.net:3001/updates/v2/buscar-clientes/android/android/estable/manifest');
-      if (!response.ok) return; // Si da 404, no hay actualización
+      if (!response.ok) return;
 
       const data: UpdateManifest = await response.json();
       const currentVersionCode = parseInt(Application.nativeBuildVersion || '1', 10);
@@ -75,17 +76,17 @@ export const OTAUpdater = () => {
 
     try {
       const result = await downloadResumable.downloadAsync();
-      
+
       if (result && result.uri) {
         // Para Android 7.0+ forzar cambio a content:// 
         const contentUri = await FileSystem.getContentUriAsync(result.uri);
-        
+
         await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
           data: contentUri,
           flags: 1,
           type: 'application/vnd.android.package-archive',
         });
-        
+
         // Regresamos el estado a falso para que puedan re-intentar si cancelaron la instalación en la ventana nativa
         setIsDownloading(false);
       }
@@ -110,7 +111,7 @@ export const OTAUpdater = () => {
         <View style={styles.card}>
           <Text style={styles.title}>Actualización Disponible</Text>
           <Text style={styles.version}>Versión {manifest.version}</Text>
-          
+
           <Text style={styles.notes}>{manifest.notes}</Text>
 
           {isDownloading ? (
@@ -126,7 +127,7 @@ export const OTAUpdater = () => {
               <TouchableOpacity style={styles.updateButton} onPress={handleDownloadAndInstall}>
                 <Text style={styles.updateButtonText}>Descargar e Instalar</Text>
               </TouchableOpacity>
-              
+
               {!manifest.isMandatory && (
                 <TouchableOpacity style={styles.cancelButton} onPress={handleCancel}>
                   <Text style={styles.cancelButtonText}>Más tarde</Text>
