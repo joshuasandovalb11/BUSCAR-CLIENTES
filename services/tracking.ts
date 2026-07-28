@@ -2,7 +2,7 @@ import * as Location from 'expo-location';
 import BackgroundService from 'react-native-background-actions';
 import { getDeviceUuid } from '../utils/storage';
 import { insertarUbicacion } from './database';
-import socket from './socket';
+import socket, { connectSocketWithAuth } from './socket';
 
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
@@ -111,6 +111,9 @@ const sleep = (time: number) => new Promise<void>((resolve) => setTimeout(() => 
 const zombieTask = async (taskDataArguments: any) => {
   console.log("🧟 [Zombie Tracker] Servicio Nativo Persistente Iniciado.");
   
+  // 1. Asegurar conexión a Sockets (Porque en Headless JS la UI no carga y el layout no se ejecuta)
+  await connectSocketWithAuth();
+
   let locationSubscription: Location.LocationSubscription | null = null;
 
   try {
