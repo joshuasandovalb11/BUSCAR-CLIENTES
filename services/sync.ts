@@ -6,7 +6,7 @@ import { limpiarUbicacionesPorIds, obtenerUbicaciones } from './database';
 
 export const SYNC_RUTAS_TASK = 'sync-rutas-task';
 
-export const forceSyncRutas = async (): Promise<BackgroundTask.BackgroundTaskResult> => {
+export const forceSyncRutas = async (isManual: boolean = false): Promise<BackgroundTask.BackgroundTaskResult> => {
   try {
     const deviceId = await getDeviceUuid();
 
@@ -19,10 +19,20 @@ export const forceSyncRutas = async (): Promise<BackgroundTask.BackgroundTaskRes
         break;
       }
 
+      const getLocalYYYYMMDD = (d: Date) => {
+        return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      };
+
+      const todayLocalStr = getLocalYYYYMMDD(new Date());
       const registrosPorDia: Record<string, { ids: number[], events: any[] }> = {};
 
       ubicaciones.forEach(u => {
-        const dateStr = new Date(u.timestamp).toISOString().split('T')[0];
+        const dateStr = getLocalYYYYMMDD(new Date(u.timestamp));
+
+        // Regla de Cierre de Turno: Si es automático, ignoramos lo de Hoy.
+        if (!isManual && dateStr === todayLocalStr) {
+          return; 
+        }
 
         if (!registrosPorDia[dateStr]) {
           registrosPorDia[dateStr] = { ids: [], events: [] };
@@ -86,4 +96,6 @@ export const forceSyncRutas = async (): Promise<BackgroundTask.BackgroundTaskRes
   }
 };
 
-TaskManager.defineTask(SYNC_RUTAS_TASK, forceSyncRutas);
+TaskManager.defineTask(SYNC_RUTAS_TASK, async () => {
+  return await forceSyncRutas(false);
+});

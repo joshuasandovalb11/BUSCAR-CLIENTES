@@ -15,49 +15,39 @@ export default function DebugScreen() {
   const [loadingSync, setLoadingSync] = useState(false);
 
   // Paginación
-  const [offset, setOffset] = useState(0);
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const LIMIT = 100;
+  const [currentPage, setCurrentPage] = useState(1);
+  const LIMIT = 50;
+  const totalPages = Math.ceil(totalCount / LIMIT) || 1;
 
-  const cargarDatos = useCallback((isRefresh = false) => {
+  const cargarDatos = useCallback(() => {
     try {
       const count = contarUbicaciones();
       setTotalCount(count);
 
-      const currentOffset = isRefresh ? 0 : offset;
-      const nuevosRegistros = obtenerUbicaciones(LIMIT, currentOffset);
-
-      if (isRefresh) {
-        setUbicaciones(nuevosRegistros);
-        setOffset(nuevosRegistros.length);
-      } else {
-        if (nuevosRegistros.length > 0) {
-          setUbicaciones(prev => [...prev, ...nuevosRegistros]);
-          setOffset(prev => prev + nuevosRegistros.length);
-        }
+      // Si borraron datos y estamos en una página vacía, regresamos a la 1
+      const maxPage = Math.ceil(count / LIMIT) || 1;
+      if (currentPage > maxPage) {
+        setCurrentPage(maxPage);
+        return;
       }
+
+      const offset = (currentPage - 1) * LIMIT;
+      const nuevosRegistros = obtenerUbicaciones(LIMIT, offset);
+      setUbicaciones(nuevosRegistros);
     } catch (e) {
       console.error("Error cargando DB:", e);
     }
-  }, [offset]);
+  }, [currentPage]);
 
   useEffect(() => {
-    cargarDatos(true);
+    cargarDatos();
   }, [cargarDatos]);
-
-  const handleLoadMore = () => {
-    if (ubicaciones.length < totalCount && !isFetchingMore) {
-      setIsFetchingMore(true);
-      cargarDatos(false);
-      setIsFetchingMore(false);
-    }
-  };
 
   const handleForzarSincronizacion = async () => {
     setLoadingSync(true);
     try {
-      const result = await forceSyncRutas();
-      cargarDatos(true);
+      const result = await forceSyncRutas(true); // Pasa true porque es manual
+      cargarDatos();
       Alert.alert("Sincronización Terminada", `Resultado: ${result === 1 ? 'SUCCESS (Puntos borrados)' : 'FAILED (Ver consola)'}`);
     } catch {
       Alert.alert("Error Fatal", "El proceso de sincronización crasheó.");
@@ -77,7 +67,8 @@ export default function DebugScreen() {
           style: "destructive",
           onPress: () => {
             limpiarUbicaciones();
-            cargarDatos(true);
+            setCurrentPage(1);
+            cargarDatos();
           }
         }
       ]
@@ -105,7 +96,7 @@ export default function DebugScreen() {
           <Ionicons name="arrow-back" size={24} color="#fff" />
           <Text style={styles.backText}>Volver</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.refreshButton} onPress={() => cargarDatos(true)}>
+        <TouchableOpacity style={styles.refreshButton} onPress={() => cargarDatos()}>
           <Ionicons name="refresh" size={24} color="#007AFF" />
         </TouchableOpacity>
       </View>
@@ -133,13 +124,31 @@ export default function DebugScreen() {
         </TouchableOpacity>
       </View>
 
+      <View style={styles.paginationRow}>
+        <TouchableOpacity 
+          style={[styles.btnPage, currentPage === 1 && styles.btnDisabled]} 
+          onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+          disabled={currentPage === 1}
+        >
+          <Text style={styles.btnText}>⬅️ Anterior</Text>
+        </TouchableOpacity>
+        
+        <Text style={styles.pageText}>Página {currentPage} de {totalPages}</Text>
+
+        <TouchableOpacity 
+          style={[styles.btnPage, currentPage === totalPages && styles.btnDisabled]} 
+          onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+          disabled={currentPage === totalPages}
+        >
+          <Text style={styles.btnText}>Siguiente ➡️</Text>
+        </TouchableOpacity>
+      </View>
+
       <FlatList
         data={ubicaciones}
         keyExtractor={(item) => item.id.toString()}
         renderItem={renderItem}
         contentContainerStyle={styles.listContainer}
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
         ListEmptyComponent={
           <Text style={styles.emptyText}>La base de datos está limpia.</Text>
         }
@@ -219,6 +228,25 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
     fontSize: 15,
+  },
+  paginationRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 15,
+    paddingVertical: 10,
+    backgroundColor: '#1E1E1E',
+  },
+  btnPage: {
+    backgroundColor: '#333',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+  },
+  pageText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
   },
   listContainer: {
     padding: 15,
