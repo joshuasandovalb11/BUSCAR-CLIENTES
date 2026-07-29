@@ -125,22 +125,22 @@ export default function DebugScreen() {
       </View>
 
       <View style={styles.paginationRow}>
-        <TouchableOpacity 
-          style={[styles.btnPage, currentPage === 1 && styles.btnDisabled]} 
+        <TouchableOpacity
+          style={[styles.btnPage, currentPage === 1 && styles.btnDisabled]}
           onPress={() => setCurrentPage(prev => Math.max(1, prev - 1))}
           disabled={currentPage === 1}
         >
-          <Text style={styles.btnText}>⬅️ Anterior</Text>
+          <Text style={styles.btnText}>Anterior</Text>
         </TouchableOpacity>
-        
+
         <Text style={styles.pageText}>Página {currentPage} de {totalPages}</Text>
 
-        <TouchableOpacity 
-          style={[styles.btnPage, currentPage === totalPages && styles.btnDisabled]} 
+        <TouchableOpacity
+          style={[styles.btnPage, currentPage === totalPages && styles.btnDisabled]}
           onPress={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
           disabled={currentPage === totalPages}
         >
-          <Text style={styles.btnText}>Siguiente ➡️</Text>
+          <Text style={styles.btnText}>Siguiente</Text>
         </TouchableOpacity>
       </View>
 

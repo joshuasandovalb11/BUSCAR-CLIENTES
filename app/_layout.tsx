@@ -3,13 +3,14 @@ import { Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Roboto_400Regular, Roboto_500Medium } from "@expo-google-fonts/roboto";
 import * as BackgroundTask from "expo-background-task";
 import * as Cellular from "expo-cellular";
+import Constants from "expo-constants";
 import "expo-dev-client";
 import { useFonts } from "expo-font";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, StyleSheet, Text, View } from "react-native";
 import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
@@ -137,6 +138,10 @@ export default function RootLayout() {
       )}
 
       <StatusBar style="auto" />
+      
+      <View style={styles.versionOverlay} pointerEvents="none">
+        <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
+      </View>
     </View>
   );
 }
@@ -147,5 +152,18 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     zIndex: 999,
+  },
+  versionOverlay: {
+    position: 'absolute',
+    bottom: 5,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 9999,
+  },
+  versionText: {
+    fontSize: 10,
+    color: 'rgba(0,0,0,0.3)',
+    fontWeight: 'bold',
   }
 });
