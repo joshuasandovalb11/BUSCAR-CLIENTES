@@ -1,18 +1,14 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
+import { getDeviceUuid } from '../utils/storage';
+import { fetchWithConfig } from './api';
 import { limpiarUbicacionesPorIds, obtenerUbicaciones } from './database';
 
 export const SYNC_RUTAS_TASK = 'sync-rutas-task';
 
 export const forceSyncRutas = async (): Promise<BackgroundTask.BackgroundTaskResult> => {
   try {
-    const boveda = await AsyncStorage.getItem('@boveda_activacion');
-    let deviceId = 'DESCONOCIDO';
-    if (boveda) {
-      const data = JSON.parse(boveda);
-      deviceId = data.id_dispositivo;
-    }
+    const deviceId = await getDeviceUuid();
 
     let allSuccessful = true;
 
@@ -56,7 +52,7 @@ export const forceSyncRutas = async (): Promise<BackgroundTask.BackgroundTaskRes
         };
 
         try {
-          const response = await fetch('https://backend-clientes-neon.vercel.app/api/general/dispositivos/batch', {
+          const response = await fetchWithConfig('/general/dispositivos/batch', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)

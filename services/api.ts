@@ -43,7 +43,7 @@ const resolveApiUrl = async (): Promise<string> => {
 /**
  * Wrapper para fetch con observabilidad y timeout.
  */
-async function fetchWithConfig(endpoint: string, options: RequestInit = {}) {
+export async function fetchWithConfig(endpoint: string, options: RequestInit = {}) {
   const baseUrl = await resolveApiUrl();
   const url = `${baseUrl}${endpoint}`;
   const method = options.method || 'GET';
