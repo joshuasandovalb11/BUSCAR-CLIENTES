@@ -1,3 +1,4 @@
+import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
 import BackgroundService from 'react-native-background-actions';
 import { getDeviceUuid } from '../utils/storage';
@@ -26,12 +27,20 @@ const emitirTiempoReal = async (location: Location.LocationObject) => {
 
   if (!cachedDeviceId) return;
 
+  let batteryLevel = -1;
+  try {
+    batteryLevel = await Battery.getBatteryLevelAsync();
+  } catch (e) {
+    console.warn("⚠️ No se pudo leer la batería:", e);
+  }
+
   const payload = {
     d: cachedDeviceId,
     lt: location.coords.latitude,
     ln: location.coords.longitude,
     sp: Math.round((location.coords.speed ?? 0) * 3.6),
-    hd: Math.round(location.coords.heading ?? 0)
+    hd: Math.round(location.coords.heading ?? 0),
+    ...(batteryLevel >= 0 ? { bt: Math.round(batteryLevel * 100) } : {})
   };
 
   socket.emit('ubicacion_tiempo_real', payload);
