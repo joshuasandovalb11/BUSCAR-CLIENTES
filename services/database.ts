@@ -37,14 +37,14 @@ export const contarUbicaciones = (): number => {
 
 export const limpiarUbicaciones = () => {
   db.runSync('DELETE FROM ubicaciones');
-  // Reclamar espacio físico en el disco duro del celular
-  db.execSync('VACUUM');
+  // En modo WAL, forzamos un Checkpoint agresivo para purgar el archivo temporal .db-wal
+  db.execSync('PRAGMA wal_checkpoint(TRUNCATE);');
 };
 
 export const limpiarUbicacionesPorIds = (ids: number[]) => {
   if (ids.length === 0) return;
   const placeholders = ids.map(() => '?').join(',');
   db.runSync(`DELETE FROM ubicaciones WHERE id IN (${placeholders})`, ids);
-  // Reclamar espacio físico en el disco duro después de borrar el lote
-  db.execSync('VACUUM');
+  // En modo WAL, forzamos un Checkpoint agresivo para purgar el archivo temporal .db-wal
+  db.execSync('PRAGMA wal_checkpoint(TRUNCATE);');
 };
