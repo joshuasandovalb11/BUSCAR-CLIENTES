@@ -29,9 +29,8 @@ export const forceSyncRutas = async (isManual: boolean = false): Promise<Backgro
       ubicaciones.forEach(u => {
         const dateStr = getLocalYYYYMMDD(new Date(u.timestamp));
 
-        // Regla de Cierre de Turno: Si es automático, ignoramos lo de Hoy.
         if (!isManual && dateStr === todayLocalStr) {
-          return; 
+          return;
         }
 
         if (!registrosPorDia[dateStr]) {

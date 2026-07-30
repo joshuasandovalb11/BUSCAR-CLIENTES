@@ -130,7 +130,7 @@ const zombieTask = async (taskDataArguments: any) => {
     locationSubscription = await Location.watchPositionAsync(
       {
         accuracy: Location.Accuracy.High, // Alta precisión
-        distanceInterval: 5,              // Pide un punto nuevo cada 5 metros
+        distanceInterval: 15,             // Pide un punto nuevo cada 15 metros (Optimizado batería)
         timeInterval: 2000,               // O pide un punto cada 2 segundos si estamos quietos
       },
       (location) => {

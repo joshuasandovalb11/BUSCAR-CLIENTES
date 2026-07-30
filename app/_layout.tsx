@@ -1,22 +1,24 @@
 /* eslint-disable react-hooks/exhaustive-deps */
 import { Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Roboto_400Regular, Roboto_500Medium } from "@expo-google-fonts/roboto";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as BackgroundTask from "expo-background-task";
 import * as Cellular from "expo-cellular";
 import Constants from "expo-constants";
 import "expo-dev-client";
+import * as IntentLauncher from "expo-intent-launcher";
 import { useFonts } from "expo-font";
 import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, AppState, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Alert, AppState, Platform, StyleSheet, Text, View } from "react-native";
 import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
 import { connectSocketWithAuth } from "../services/socket";
 import { SYNC_RUTAS_TASK } from "../services/sync";
-import "../services/tracking";
+import { initPersistentTracker } from "../services/tracking";
 import { clearSessionToken, getSessionToken } from "../utils/storage";
 
 initDB();
@@ -34,6 +36,33 @@ export default function RootLayout() {
   const { inicializarRastreoSilencioso, verificarPermisos } = useLocation();
 
   useEffect(() => {
+    const checkBatteryOptimization = async () => {
+      if (Platform.OS === 'android') {
+        const hasPrompted = await AsyncStorage.getItem('@battery_prompted');
+        if (!hasPrompted) {
+          Alert.alert(
+            "🔋 Optimización de Batería",
+            "Para evitar que Android cierre la app mientras manejas, quita la restricción de batería. Presiona 'Configurar' y cambia la batería a 'Sin restricciones'.",
+            [
+              { text: "Luego", style: "cancel", onPress: () => AsyncStorage.setItem('@battery_prompted', 'true') },
+              { 
+                text: "Configurar", 
+                onPress: async () => {
+                  await AsyncStorage.setItem('@battery_prompted', 'true');
+                  try {
+                    IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                  } catch (e) {
+                    console.log("No se pudo abrir settings", e);
+                  }
+                }
+              }
+            ]
+          );
+        }
+      }
+    };
+    checkBatteryOptimization();
+
     const checkSimPresence = async () => {
       try {
         const token = await getSessionToken();
@@ -53,10 +82,12 @@ export default function RootLayout() {
     };
 
     checkSimPresence();
+    initPersistentTracker(); // Arrancar tracker por defecto
 
     const intervalId = setInterval(() => {
       if (appState.current === 'active') {
         checkSimPresence();
+        initPersistentTracker(); // Watchdog re-animador cada 5 segs
       }
     }, 5000);
 
@@ -66,6 +97,7 @@ export default function RootLayout() {
         nextAppState === 'active'
       ) {
         checkSimPresence();
+        initPersistentTracker(); // Reanimar cuando la app vuelve a primer plano
       }
       appState.current = nextAppState;
     });
@@ -138,7 +170,7 @@ export default function RootLayout() {
       )}
 
       <StatusBar style="auto" />
-      
+
       <View style={styles.versionOverlay} pointerEvents="none">
         <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
       </View>
@@ -155,7 +187,7 @@ const styles = StyleSheet.create({
   },
   versionOverlay: {
     position: 'absolute',
-    bottom: 5,
+    bottom: 30,
     left: 0,
     right: 0,
     alignItems: 'center',
