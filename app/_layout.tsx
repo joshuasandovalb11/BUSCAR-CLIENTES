@@ -9,10 +9,10 @@ import "expo-dev-client";
 import * as IntentLauncher from "expo-intent-launcher";
 import { useFonts } from "expo-font";
 import { Stack, useRouter } from "expo-router";
-import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Platform, StyleSheet, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
@@ -31,6 +31,7 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const appState = useRef(AppState.currentState);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { inicializarRastreoSilencioso, verificarPermisos } = useLocation();
@@ -171,7 +172,7 @@ export default function RootLayout() {
 
       <StatusBar style="auto" />
 
-      <View style={styles.versionOverlay} pointerEvents="none">
+      <View style={[styles.versionOverlay, { bottom: insets.bottom > 0 ? insets.bottom + 5 : 25 }]} pointerEvents="none">
         <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
       </View>
     </View>
@@ -187,7 +188,6 @@ const styles = StyleSheet.create({
   },
   versionOverlay: {
     position: 'absolute',
-    bottom: 30,
     left: 0,
     right: 0,
     alignItems: 'center',
