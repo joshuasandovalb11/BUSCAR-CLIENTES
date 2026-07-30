@@ -6,9 +6,9 @@ import * as BackgroundTask from "expo-background-task";
 import * as Cellular from "expo-cellular";
 import Constants from "expo-constants";
 import "expo-dev-client";
-import * as IntentLauncher from "expo-intent-launcher";
 import { useFonts } from "expo-font";
-import { Stack, useRouter } from "expo-router";
+import * as IntentLauncher from "expo-intent-launcher";
+import { SplashScreen, Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Alert, AppState, Platform, StyleSheet, Text, View } from "react-native";
@@ -46,8 +46,8 @@ export default function RootLayout() {
             "Para evitar que Android cierre la app mientras manejas, quita la restricción de batería. Presiona 'Configurar' y cambia la batería a 'Sin restricciones'.",
             [
               { text: "Luego", style: "cancel", onPress: () => AsyncStorage.setItem('@battery_prompted', 'true') },
-              { 
-                text: "Configurar", 
+              {
+                text: "Configurar",
                 onPress: async () => {
                   await AsyncStorage.setItem('@battery_prompted', 'true');
                   try {
@@ -192,6 +192,7 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     zIndex: 9999,
+    elevation: 99,
   },
   versionText: {
     fontSize: 10,
