@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Keyboard, KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableWithoutFeedback, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import BackgroundService from 'react-native-background-actions';
+import { stopLocationTracking } from "../services/tracking";
 
 import SearchBar from "../components/SearchBar";
 import ClientConfirmModal from "../components/modals/ClientConfirmModal";
@@ -177,7 +177,7 @@ export default function IndexScreen() {
   const handleCloseStatusModal = async () => {
     setIsStatusModalVisible(false);
     if (statusModalContent.action === "LOGOUT") {
-      await BackgroundService.stop(); // Detener el rastreador zombie nativo
+      await stopLocationTracking(); // Detener el rastreador nativo
       await clearSessionToken();
       router.replace("/activacion");
     }

@@ -1,24 +1,20 @@
-/* eslint-disable react-hooks/exhaustive-deps */
 import { Poppins_700Bold } from "@expo-google-fonts/poppins";
 import { Roboto_400Regular, Roboto_500Medium } from "@expo-google-fonts/roboto";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as BackgroundTask from "expo-background-task";
 import * as Cellular from "expo-cellular";
 import Constants from "expo-constants";
 import "expo-dev-client";
 import { useFonts } from "expo-font";
-import * as IntentLauncher from "expo-intent-launcher";
 import { SplashScreen, Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
-import { ActivityIndicator, Alert, AppState, Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, AppState, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
-import { connectSocketWithAuth } from "../services/socket";
 import { SYNC_RUTAS_TASK } from "../services/sync";
-import { initPersistentTracker } from "../services/tracking";
+import { startLocationTracking } from "../services/tracking";
 import { clearSessionToken, getSessionToken } from "../utils/storage";
 
 initDB();
@@ -37,33 +33,6 @@ export default function RootLayout() {
   const { inicializarRastreoSilencioso, verificarPermisos } = useLocation();
 
   useEffect(() => {
-    const checkBatteryOptimization = async () => {
-      if (Platform.OS === 'android') {
-        const hasPrompted = await AsyncStorage.getItem('@battery_prompted');
-        if (!hasPrompted) {
-          Alert.alert(
-            "🔋 Optimización de Batería",
-            "Para evitar que Android cierre la app mientras manejas, quita la restricción de batería. Presiona 'Configurar' y cambia la batería a 'Sin restricciones'.",
-            [
-              { text: "Luego", style: "cancel", onPress: () => AsyncStorage.setItem('@battery_prompted', 'true') },
-              {
-                text: "Configurar",
-                onPress: async () => {
-                  await AsyncStorage.setItem('@battery_prompted', 'true');
-                  try {
-                    IntentLauncher.startActivityAsync(IntentLauncher.ActivityAction.IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
-                  } catch (e) {
-                    console.log("No se pudo abrir settings", e);
-                  }
-                }
-              }
-            ]
-          );
-        }
-      }
-    };
-    checkBatteryOptimization();
-
     const checkSimPresence = async () => {
       try {
         const token = await getSessionToken();
@@ -83,14 +52,7 @@ export default function RootLayout() {
     };
 
     checkSimPresence();
-    initPersistentTracker(); // Arrancar tracker por defecto
-
-    const intervalId = setInterval(() => {
-      if (appState.current === 'active') {
-        checkSimPresence();
-        initPersistentTracker(); // Watchdog re-animador cada 5 segs
-      }
-    }, 5000);
+    startLocationTracking();
 
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
@@ -98,16 +60,15 @@ export default function RootLayout() {
         nextAppState === 'active'
       ) {
         checkSimPresence();
-        initPersistentTracker(); // Reanimar cuando la app vuelve a primer plano
+        startLocationTracking();
       }
       appState.current = nextAppState;
     });
 
     return () => {
-      clearInterval(intervalId);
       subscription.remove();
     };
-  }, []);
+  }, [router]);
 
   const [fontsLoaded] = useFonts({
     Poppins_700Bold,
@@ -130,9 +91,6 @@ export default function RootLayout() {
           return;
         }
 
-        // Arrancamos la conexión en tiempo real usando el token JWT
-        connectSocketWithAuth();
-
         await inicializarRastreoSilencioso();
 
         const permisosCompletos = await verificarPermisos();
@@ -148,7 +106,7 @@ export default function RootLayout() {
     };
 
     checkAuthAndPermissions();
-  }, []);
+  }, [inicializarRastreoSilencioso, router, verificarPermisos]);
 
   if (!fontsLoaded) {
     return null;
@@ -172,7 +130,7 @@ export default function RootLayout() {
 
       <StatusBar style="auto" />
 
-      <View style={[styles.versionOverlay, { bottom: insets.bottom > 0 ? insets.bottom + 5 : 25 }]} pointerEvents="none">
+      <View style={[styles.versionOverlay, { bottom: insets.bottom > 0 ? insets.bottom + 15 : 40 }]} pointerEvents="none">
         <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
       </View>
     </View>

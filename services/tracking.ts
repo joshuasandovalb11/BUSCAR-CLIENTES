@@ -1,9 +1,8 @@
-import * as Battery from 'expo-battery';
 import * as Location from 'expo-location';
-import BackgroundService from 'react-native-background-actions';
-import { getDeviceUuid } from '../utils/storage';
+import * as TaskManager from 'expo-task-manager';
 import { insertarUbicacion } from './database';
-import socket, { connectSocketWithAuth } from './socket';
+
+export const LOCATION_TRACKING_TASK = 'BACKGROUND_LOCATION_TRACKER';
 
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
@@ -12,42 +11,8 @@ let consecutiveStationaryCount = 0;
 let ultimoTimestampGuardado = 0;
 let ultimoHeadingGuardado = 0;
 
-let cachedDeviceId: string | null = null;
-
-(async () => {
-  try {
-    cachedDeviceId = await getDeviceUuid();
-  } catch (e) {
-    console.error("Error inicializando caché de Device ID:", e);
-  }
-})();
-
-const emitirTiempoReal = async (location: Location.LocationObject) => {
-  console.log('📡 [Tracker] Coordenada detectada en vivo:', location.coords.latitude, location.coords.longitude);
-
-  if (!cachedDeviceId) return;
-
-  let batteryLevel = -1;
-  try {
-    batteryLevel = await Battery.getBatteryLevelAsync();
-  } catch (e) {
-    console.warn("⚠️ No se pudo leer la batería:", e);
-  }
-
-  const payload = {
-    d: cachedDeviceId,
-    lt: location.coords.latitude,
-    ln: location.coords.longitude,
-    sp: Math.round((location.coords.speed ?? 0) * 3.6),
-    hd: Math.round(location.coords.heading ?? 0),
-    ...(batteryLevel >= 0 ? { bt: Math.round(batteryLevel * 100) } : {})
-  };
-
-  socket.emit('ubicacion_tiempo_real', payload);
-};
-
-const procesarUbicacion = (location: Location.LocationObject) => {
-  // 1. Guardián de Inexactitud (Filtro relajado para transporte: 100 metros)
+export const procesarUbicacion = (location: Location.LocationObject) => {
+  // 1. Guardián de Inexactitud (Filtro para transporte: 100 metros)
   if ((location.coords.accuracy || 0) > 100) {
     console.log("⚠️ Punto descartado por baja precisión (> 100m)");
     return;
@@ -57,12 +22,7 @@ const procesarUbicacion = (location: Location.LocationObject) => {
   const timestamp = location.timestamp;
   const speedKmh = (rawSpeed ?? 0) * 3.6;
 
-  // Emitir al instante para el Socket (visualizador de supervisores)
-  try {
-    emitirTiempoReal(location).catch(() => { });
-  } catch {}
-
-  // 2. Máquina de Estados Híbrida (Puramente basada en telemetría en vivo)
+  // 2. Máquina de Estados Híbrida
   if (speedKmh <= 4) {
     consecutiveMovingCount = 0;
     consecutiveStationaryCount++;
@@ -115,64 +75,58 @@ const procesarUbicacion = (location: Location.LocationObject) => {
   }
 };
 
-const sleep = (time: number) => new Promise<void>((resolve) => setTimeout(() => resolve(), time));
-
-const zombieTask = async (taskDataArguments: any) => {
-  console.log("🧟 [Zombie Tracker] Servicio Nativo Persistente Iniciado.");
-  
-  // 1. Asegurar conexión a Sockets (Porque en Headless JS la UI no carga y el layout no se ejecuta)
-  await connectSocketWithAuth();
-
-  let locationSubscription: Location.LocationSubscription | null = null;
-
-  try {
-    // Iniciamos la captura en PRIMER PLANO directamente dentro del hilo Zombie
-    locationSubscription = await Location.watchPositionAsync(
-      {
-        accuracy: Location.Accuracy.High, // Alta precisión
-        distanceInterval: 15,             // Pide un punto nuevo cada 15 metros (Optimizado batería)
-        timeInterval: 2000,               // O pide un punto cada 2 segundos si estamos quietos
-      },
-      (location) => {
-        procesarUbicacion(location);
+// Registro de la Tarea Nativa de Expo (Corre en segundo plano y sobrevive al swipe)
+TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }: { data: any; error: any }) => {
+  if (error) {
+    console.error("❌ Error en tarea de ubicación nativa:", error);
+    return;
+  }
+  if (data) {
+    const { locations } = data as { locations: Location.LocationObject[] };
+    if (locations && locations.length > 0) {
+      for (const loc of locations) {
+        procesarUbicacion(loc);
       }
-    );
-    console.log("✅ Watcher de GPS anclado exitosamente al hilo Zombie.");
-  } catch (e) {
-    console.error("Error arrancando GPS Watcher desde zombie:", e);
+    }
   }
+});
 
-  // Mantiene vivo el puente JS infinitamente (incluso si deslizan la app)
-  while (BackgroundService.isRunning()) {
-      await sleep(10000); // Duerme 10 segundos para no ahogar el CPU del dispositivo
-  }
+export const startLocationTracking = async () => {
+  try {
+    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+    if (hasStarted) {
+      console.log("📍 [Tracker Nativo] El rastreo en segundo plano ya estaba iniciado.");
+      return;
+    }
 
-  // Limpieza si el usuario cierra sesión y apaga el BackgroundService desde index.tsx
-  if (locationSubscription) {
-    locationSubscription.remove();
-    console.log("🛑 Watcher de GPS destruido exitosamente.");
+    await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
+      accuracy: Location.Accuracy.High,
+      distanceInterval: 15, // Pide un punto nuevo cada 15 metros
+      timeInterval: 2000,   // O pide un punto cada 2 segundos
+      deferredUpdatesInterval: 5000,
+      foregroundService: {
+        notificationTitle: "Buscando clientes",
+        notificationBody: "Optimizando ruta y sincronizando...",
+        notificationColor: "#007AFF",
+      },
+      pausesUpdatesAutomatically: false,
+    });
+
+    console.log("🚀 [Tracker Nativo] Foreground Service iniciado exitosamente.");
+  } catch (error) {
+    console.error("❌ Error iniciando rastreo nativo:", error);
   }
 };
 
-export const initPersistentTracker = async () => {
-  const options = {
-      taskName: 'RastreoGPS',
-      taskTitle: 'Buscando clientes',
-      taskDesc: 'Optimizando ruta y sincronizando...',
-      taskIcon: {
-          name: 'ic_launcher', // Usa el ícono nativo de Android
-          type: 'mipmap',
-      },
-      color: '#007AFF', // Azul corporativo
-      parameters: { delay: 10000 },
-  };
-
+export const stopLocationTracking = async () => {
   try {
-    if (!BackgroundService.isRunning()) {
-      await BackgroundService.start(zombieTask, options);
+    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+    if (hasStarted) {
+      await Location.stopLocationUpdatesAsync(LOCATION_TRACKING_TASK);
+      console.log("🛑 [Tracker Nativo] Rastreo detenido exitosamente.");
     }
   } catch (error) {
-    console.error("Error inicializando BackgroundService:", error);
+    console.error("❌ Error deteniendo rastreo nativo:", error);
   }
 };
 

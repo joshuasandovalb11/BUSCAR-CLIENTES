@@ -1,5 +1,5 @@
 import * as Location from "expo-location";
-import { initPersistentTracker } from "../services/tracking";
+import { startLocationTracking } from "../services/tracking";
 
 export const useLocation = () => {
   const verificarPermisos = async (): Promise<boolean> => {
@@ -16,7 +16,7 @@ export const useLocation = () => {
       const { status: bgStatus } = await Location.requestBackgroundPermissionsAsync();
       if (bgStatus !== "granted") return;
 
-      await initPersistentTracker();
+      await startLocationTracking();
     } catch (error) {
       console.error("Error inicializando rastreo silencioso:", error);
     }
