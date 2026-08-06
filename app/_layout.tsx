@@ -10,6 +10,7 @@ import { StatusBar } from "expo-status-bar";
 import React, { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, AppState, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { ErrorBoundary } from "../components/ErrorBoundary";
 import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
@@ -23,7 +24,7 @@ BackgroundTask.registerTaskAsync(SYNC_RUTAS_TASK, {
   minimumInterval: 240,
 }).catch((err) => console.error("Error registrando sync nocturno:", err));
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const router = useRouter();
@@ -78,62 +79,86 @@ export default function RootLayout() {
 
   useEffect(() => {
     if (fontsLoaded) {
-      SplashScreen.hideAsync();
+      SplashScreen.hideAsync().catch(() => {});
     }
   }, [fontsLoaded]);
 
   useEffect(() => {
+    let isMounted = true;
+
+    // Guardián de Tiempo: Si tras reiniciar el dispositivo cualquier servicio tarda,
+    // el spinner se desactivará como máximo en 2.5 segundos para no dejar la app colgada.
+    const safetyTimeout = setTimeout(() => {
+      if (isMounted) {
+        setIsCheckingAuth(false);
+      }
+    }, 2500);
+
     const checkAuthAndPermissions = async () => {
       try {
         const token = await getSessionToken();
         if (!token) {
-          setTimeout(() => router.replace("/activacion"), 50);
+          if (isMounted) {
+            setIsCheckingAuth(false);
+            router.replace("/activacion");
+          }
           return;
         }
 
-        await inicializarRastreoSilencioso();
-
         const permisosCompletos = await verificarPermisos();
-        if (!permisosCompletos) {
-          setTimeout(() => router.replace("/permisos"), 50);
+        if (!permisosCompletos && isMounted) {
+          router.replace("/permisos");
         }
+
+        // Arranque asíncrono y no bloqueante del rastreador
+        inicializarRastreoSilencioso().catch((err) => {
+          console.warn("Aviso: Inicialización de rastreo silencioso diferida:", err);
+        });
       } catch (error) {
         console.error("Error validando acceso", error);
-        setTimeout(() => router.replace("/activacion"), 50);
+        if (isMounted) {
+          router.replace("/activacion");
+        }
       } finally {
-        setIsCheckingAuth(false);
+        clearTimeout(safetyTimeout);
+        if (isMounted) {
+          setIsCheckingAuth(false);
+        }
       }
     };
 
     checkAuthAndPermissions();
+
+    return () => {
+      isMounted = false;
+      clearTimeout(safetyTimeout);
+    };
   }, [inicializarRastreoSilencioso, router, verificarPermisos]);
 
-  if (!fontsLoaded) {
-    return null;
-  }
-
   return (
-    <View style={{ flex: 1 }}>
-      <OTAUpdater />
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="activacion" options={{ headerShown: false }} />
-        <Stack.Screen name="permisos" options={{ headerShown: false }} />
-        <Stack.Screen name="debug" options={{ headerShown: false }} />
-      </Stack>
+    <ErrorBoundary>
+      <View style={{ flex: 1 }}>
+        <OTAUpdater />
+        <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="activacion" options={{ headerShown: false }} />
+          <Stack.Screen name="permisos" options={{ headerShown: false }} />
+          <Stack.Screen name="debug" options={{ headerShown: false }} />
+        </Stack>
 
-      {isCheckingAuth && (
-        <View style={[StyleSheet.absoluteFill, styles.loadingOverlay]}>
-          <ActivityIndicator size="large" color="#007AFF" />
+        {isCheckingAuth && (
+          <View style={[StyleSheet.absoluteFill, styles.loadingOverlay]}>
+            <ActivityIndicator size="large" color="#007AFF" />
+          </View>
+        )}
+
+        <StatusBar style="auto" />
+
+        <View style={[styles.versionOverlay, { bottom: insets.bottom > 0 ? insets.bottom + 15 : 40 }]} pointerEvents="none">
+          <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
         </View>
-      )}
-
-      <StatusBar style="auto" />
-
-      <View style={[styles.versionOverlay, { bottom: insets.bottom > 0 ? insets.bottom + 15 : 40 }]} pointerEvents="none">
-        <Text style={styles.versionText}>v{Constants.expoConfig?.version || '1.0.0'}</Text>
       </View>
-    </View>
+    </ErrorBoundary>
   );
 }
 
