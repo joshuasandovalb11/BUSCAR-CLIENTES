@@ -1,20 +1,16 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import { insertarUbicacion } from './database';
+import { insertarUbicacion, obtenerUltimaUbicacion } from './database';
 
 export const LOCATION_TRACKING_TASK = 'BACKGROUND_LOCATION_TRACKER';
 
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
-let ultimoTimestampGuardado = 0;
-let ultimoLatitudGuardada = 0;
-let ultimoLongitudGuardada = 0;
 let ultimoHeadingGuardado = 0;
 let isStartingTracker = false;
 
-// Fórmula de Haversine para calcular distancia métrica exacta entre dos puntos GPS
 export const calcularDistanciaMetros = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371e3; // Radio de la Tierra en metros
+  const R = 6371e3;
   const rad = Math.PI / 180;
   const dLat = (lat2 - lat1) * rad;
   const dLon = (lon2 - lon1) * rad;
@@ -30,7 +26,6 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
   try {
     const accuracy = location.coords.accuracy || 0;
 
-    // 1. Guardián de Precisión Satelital
     if (accuracy > 80) {
       console.log("⚠️ Punto descartado por precisión deficiente (> 80m):", accuracy);
       return;
@@ -40,39 +35,32 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
     const timestamp = location.timestamp;
     const speedKmh = Math.max(0, (rawSpeed ?? 0) * 3.6);
 
-    // 2. Guardado Inicial Atómico (Primer punto del día / arranque)
-    if (ultimoTimestampGuardado === 0) {
+    const ultimaUbicacionDB = obtenerUltimaUbicacion();
+
+    if (!ultimaUbicacionDB) {
       insertarUbicacion(latitude, longitude, speedKmh, timestamp);
-      ultimoTimestampGuardado = timestamp;
-      ultimoLatitudGuardada = latitude;
-      ultimoLongitudGuardada = longitude;
       ultimoHeadingGuardado = heading ?? 0;
-      console.log("💾 Primer punto guardado como ancla inicial.");
+      console.log("💾 Primer punto ancla guardado en SQLite.");
       return;
     }
 
-    // 3. Cálculo de Distancia Geodésica Real desde el último punto guardado
     const distanciaRecorrida = calcularDistanciaMetros(
-      ultimoLatitudGuardada,
-      ultimoLongitudGuardada,
+      ultimaUbicacionDB.latitud,
+      ultimaUbicacionDB.longitud,
       latitude,
       longitude
     );
 
-    // Filtro Anti-Rebotes en Interiores:
-    // Si la velocidad es baja (< 10 km/h) pero la precisión es dudosa (> 35m) y la distancia es menor a 25m,
-    // es un rebote de señal contra paredes o techos.
+    const tiempoTranscurrido = timestamp - ultimaUbicacionDB.timestamp;
+
     if (speedKmh < 10 && accuracy > 35 && distanciaRecorrida < 25) {
       console.log("⚠️ Micro-rebote de interiores ignorado.");
       return;
     }
 
-    // 4. Máquina de Estados Geodésica Inteligente
-    // Si la distancia es menor a 25 metros o la velocidad es menor a 6 km/h, estamos en PARADA / CLIENTE
     if (distanciaRecorrida < 25 || speedKmh < 6) {
       estadoActual = 'ESTACIONARIO';
     } else {
-      // Si se alejó 25+ metros y la velocidad es >= 6 km/h, estamos en CONDUCCIÓN VEHICULAR REAL
       estadoActual = 'MOVIMIENTO';
     }
 
@@ -80,19 +68,14 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
     let velocidadAGuardar = speedKmh;
 
     if (estadoActual === 'ESTACIONARIO') {
-      // En Parada / Visita a Cliente / Casa:
-      // Heartbeat: 1 punto cada 60 minutos (3,600,000 ms) para confirmar que el dispositivo sigue vivo.
-      if (timestamp - ultimoTimestampGuardado >= 3600000) {
+      if (tiempoTranscurrido >= 3600000) {
         debeGuardar = true;
-        velocidadAGuardar = 0.0; // Normalizar velocidad limpia a 0 km/h en reposo
+        velocidadAGuardar = 0.0;
       }
     } else if (estadoActual === 'MOVIMIENTO') {
-      // En Movimiento Vehicular Real:
-      // a) Cada 30 segundos si recorrió al menos 20 metros
-      if (timestamp - ultimoTimestampGuardado >= 30000 && distanciaRecorrida >= 20) {
+      if (tiempoTranscurrido >= 30000 && distanciaRecorrida >= 20) {
         debeGuardar = true;
       }
-      // b) En giros y curvas pronunciadas (>= 15 grados) si avanzó al menos 15 metros
       else if (speedKmh > 6 && heading !== null && distanciaRecorrida >= 15) {
         const headingDiff = Math.abs(heading - ultimoHeadingGuardado);
         if (headingDiff >= 15 && headingDiff <= 345) {
@@ -103,9 +86,6 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
 
     if (debeGuardar) {
       insertarUbicacion(latitude, longitude, velocidadAGuardar, timestamp);
-      ultimoTimestampGuardado = timestamp;
-      ultimoLatitudGuardada = latitude;
-      ultimoLongitudGuardada = longitude;
       ultimoHeadingGuardado = heading ?? 0;
       console.log(`💾 Punto GUARDADO (${estadoActual}): ${velocidadAGuardar.toFixed(1)} km/h, Dist: ${distanciaRecorrida.toFixed(1)}m`);
     }
@@ -114,7 +94,6 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
   }
 };
 
-// Registro de la Tarea Nativa de Expo (Corre en segundo plano y sobrevive al swipe)
 TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }: { data: any; error: any }) => {
   if (error) {
     console.error("❌ Error en tarea de ubicación nativa:", error);
@@ -145,16 +124,16 @@ export const startLocationTracking = async () => {
     }
 
     await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
-      accuracy: Location.Accuracy.Balanced, // Precisión óptima sin sobrecalentamiento de radio GPS
-      distanceInterval: 15,                // 15 metros entre puntos
-      timeInterval: 10000,                 // 10 segundos en reposo/rectas
+      accuracy: Location.Accuracy.High,
+      distanceInterval: 15,
+      timeInterval: 10000,
       deferredUpdatesInterval: 5000,
       foregroundService: {
         notificationTitle: "Buscando clientes",
         notificationBody: "Optimizando ruta y sincronizando...",
         notificationColor: "#007AFF",
       },
-      pausesUpdatesAutomatically: true,    // Permite al GPS suspenderse en reposo absoluto
+      pausesUpdatesAutomatically: false,
     });
 
     console.log("🚀 [Tracker Nativo] Foreground Service iniciado exitosamente.");
@@ -176,4 +155,3 @@ export const stopLocationTracking = async () => {
     console.error("❌ Error deteniendo rastreo nativo:", error);
   }
 };
-
