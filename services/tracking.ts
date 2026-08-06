@@ -6,74 +6,108 @@ export const LOCATION_TRACKING_TASK = 'BACKGROUND_LOCATION_TRACKER';
 
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
-let consecutiveMovingCount = 0;
-let consecutiveStationaryCount = 0;
 let ultimoTimestampGuardado = 0;
+let ultimoLatitudGuardada = 0;
+let ultimoLongitudGuardada = 0;
 let ultimoHeadingGuardado = 0;
 let isStartingTracker = false;
 
+// Fórmula de Haversine para calcular distancia métrica exacta entre dos puntos GPS
+export const calcularDistanciaMetros = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371e3; // Radio de la Tierra en metros
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLon = (lon2 - lon1) * rad;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * rad) * Math.cos(lat2 * rad) *
+    Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+};
+
 export const procesarUbicacion = (location: Location.LocationObject) => {
   try {
-    // 1. Guardián de Inexactitud (Filtro para transporte: 100 metros)
-    if ((location.coords.accuracy || 0) > 100) {
-      console.log("⚠️ Punto descartado por baja precisión (> 100m)");
+    const accuracy = location.coords.accuracy || 0;
+
+    // 1. Guardián de Precisión Satelital
+    if (accuracy > 80) {
+      console.log("⚠️ Punto descartado por precisión deficiente (> 80m):", accuracy);
       return;
     }
 
     const { latitude, longitude, speed: rawSpeed, heading } = location.coords;
     const timestamp = location.timestamp;
-    const speedKmh = (rawSpeed ?? 0) * 3.6;
+    const speedKmh = Math.max(0, (rawSpeed ?? 0) * 3.6);
 
-    // 2. Máquina de Estados Híbrida
-    if (speedKmh <= 4) {
-      consecutiveMovingCount = 0;
-      consecutiveStationaryCount++;
-
-      // Requiere 10 lecturas estacionarias para declararse en ESTACIONARIO
-      if (estadoActual === 'MOVIMIENTO' && consecutiveStationaryCount >= 10) {
-        console.log("¡ESTADO ESTACIONARIO DETECTADO!");
-        estadoActual = 'ESTACIONARIO';
-      }
-    } else {
-      consecutiveStationaryCount = 0;
-      consecutiveMovingCount++;
-
-      if (estadoActual === 'ESTACIONARIO' && consecutiveMovingCount >= 2) {
-        console.log("¡ESTADO MOVIMIENTO DETECTADO!");
-        estadoActual = 'MOVIMIENTO';
-      }
+    // 2. Guardado Inicial Atómico (Primer punto del día / arranque)
+    if (ultimoTimestampGuardado === 0) {
+      insertarUbicacion(latitude, longitude, speedKmh, timestamp);
+      ultimoTimestampGuardado = timestamp;
+      ultimoLatitudGuardada = latitude;
+      ultimoLongitudGuardada = longitude;
+      ultimoHeadingGuardado = heading ?? 0;
+      console.log("💾 Primer punto guardado como ancla inicial.");
+      return;
     }
 
-    // 3. Lógica de Guardado para SQLite (Historial de Ruta)
+    // 3. Cálculo de Distancia Geodésica Real desde el último punto guardado
+    const distanciaRecorrida = calcularDistanciaMetros(
+      ultimoLatitudGuardada,
+      ultimoLongitudGuardada,
+      latitude,
+      longitude
+    );
+
+    // Filtro Anti-Rebotes en Interiores:
+    // Si la velocidad es baja (< 10 km/h) pero la precisión es dudosa (> 35m) y la distancia es menor a 25m,
+    // es un rebote de señal contra paredes o techos.
+    if (speedKmh < 10 && accuracy > 35 && distanciaRecorrida < 25) {
+      console.log("⚠️ Micro-rebote de interiores ignorado.");
+      return;
+    }
+
+    // 4. Máquina de Estados Geodésica Inteligente
+    // Si la distancia es menor a 25 metros o la velocidad es menor a 6 km/h, estamos en PARADA / CLIENTE
+    if (distanciaRecorrida < 25 || speedKmh < 6) {
+      estadoActual = 'ESTACIONARIO';
+    } else {
+      // Si se alejó 25+ metros y la velocidad es >= 6 km/h, estamos en CONDUCCIÓN VEHICULAR REAL
+      estadoActual = 'MOVIMIENTO';
+    }
+
     let debeGuardar = false;
+    let velocidadAGuardar = speedKmh;
 
     if (estadoActual === 'ESTACIONARIO') {
-      // Heartbeat: 1 punto cada 60 minutos (3600000 ms)
+      // En Parada / Visita a Cliente / Casa:
+      // Heartbeat: 1 punto cada 60 minutos (3,600,000 ms) para confirmar que el dispositivo sigue vivo.
       if (timestamp - ultimoTimestampGuardado >= 3600000) {
         debeGuardar = true;
+        velocidadAGuardar = 0.0; // Normalizar velocidad limpia a 0 km/h en reposo
       }
     } else if (estadoActual === 'MOVIMIENTO') {
-      // Filtro de Tiempo: cada 30 segundos (30000 ms)
-      if (timestamp - ultimoTimestampGuardado >= 30000) {
+      // En Movimiento Vehicular Real:
+      // a) Cada 30 segundos si recorrió al menos 20 metros
+      if (timestamp - ultimoTimestampGuardado >= 30000 && distanciaRecorrida >= 20) {
         debeGuardar = true;
       }
-      // Filtro de Giro: si la velocidad > 5 km/h y el rumbo cambió >= 15 grados
-      else if (speedKmh > 5 && heading !== null) {
+      // b) En giros y curvas pronunciadas (>= 15 grados) si avanzó al menos 15 metros
+      else if (speedKmh > 6 && heading !== null && distanciaRecorrida >= 15) {
         const headingDiff = Math.abs(heading - ultimoHeadingGuardado);
-        if (headingDiff >= 15) {
+        if (headingDiff >= 15 && headingDiff <= 345) {
           debeGuardar = true;
         }
       }
     }
 
-    // Guardado Atómico Inicial (El primer punto siempre se guarda)
-    if (ultimoTimestampGuardado === 0) debeGuardar = true;
-
     if (debeGuardar) {
-      insertarUbicacion(latitude, longitude, speedKmh, timestamp);
+      insertarUbicacion(latitude, longitude, velocidadAGuardar, timestamp);
       ultimoTimestampGuardado = timestamp;
+      ultimoLatitudGuardada = latitude;
+      ultimoLongitudGuardada = longitude;
       ultimoHeadingGuardado = heading ?? 0;
-      console.log("💾 Punto GUARDADO en base de datos SQLite.");
+      console.log(`💾 Punto GUARDADO (${estadoActual}): ${velocidadAGuardar.toFixed(1)} km/h, Dist: ${distanciaRecorrida.toFixed(1)}m`);
     }
   } catch (err) {
     console.error("Error procesando ubicación nativa:", err);
