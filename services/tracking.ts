@@ -7,7 +7,6 @@ export const LOCATION_TRACKING_TASK = 'BACKGROUND_LOCATION_TRACKER';
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
 let ultimoHeadingGuardado = 0;
-let isStartingTracker = false;
 
 export const calcularDistanciaMetros = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371e3;
@@ -110,19 +109,7 @@ TaskManager.defineTask(LOCATION_TRACKING_TASK, async ({ data, error }: { data: a
 });
 
 export const startLocationTracking = async () => {
-  if (isStartingTracker) {
-    return;
-  }
-
-  isStartingTracker = true;
-
   try {
-    const hasStarted = await Location.hasStartedLocationUpdatesAsync(LOCATION_TRACKING_TASK);
-    if (hasStarted) {
-      console.log("📍 [Tracker Nativo] El rastreo en segundo plano ya estaba iniciado.");
-      return;
-    }
-
     await Location.startLocationUpdatesAsync(LOCATION_TRACKING_TASK, {
       accuracy: Location.Accuracy.High,
       distanceInterval: 15,
@@ -139,8 +126,6 @@ export const startLocationTracking = async () => {
     console.log("🚀 [Tracker Nativo] Foreground Service iniciado exitosamente.");
   } catch (error) {
     console.error("❌ Error iniciando rastreo nativo:", error);
-  } finally {
-    isStartingTracker = false;
   }
 };
 
