@@ -47,6 +47,19 @@ export const obtenerUbicaciones = (limit: number = 500, offset: number = 0) => {
   }
 };
 
+export const obtenerUbicacionesAnteriores = (timestampLimite: number, limit: number = 500) => {
+  try {
+    if (!db) db = SQLite.openDatabaseSync('rutas.db');
+    return db.getAllSync(
+      `SELECT * FROM ubicaciones WHERE timestamp < ? ORDER BY timestamp ASC LIMIT ${limit}`,
+      [timestampLimite]
+    ) as { id: number; latitud: number; longitud: number; velocidad: number; timestamp: number }[];
+  } catch (e) {
+    console.error("Error obteniendo ubicaciones anteriores:", e);
+    return [];
+  }
+};
+
 export const obtenerUltimaUbicacion = (): { id: number; latitud: number; longitud: number; velocidad: number; timestamp: number } | null => {
   try {
     if (!db) db = SQLite.openDatabaseSync('rutas.db');

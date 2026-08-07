@@ -1,12 +1,14 @@
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import { insertarUbicacion, obtenerUltimaUbicacion } from './database';
+import { forceSyncRutas } from './sync';
 
 export const LOCATION_TRACKING_TASK = 'BACKGROUND_LOCATION_TRACKER';
 
 type EstadoRastreo = 'MOVIMIENTO' | 'ESTACIONARIO';
 let estadoActual: EstadoRastreo = 'MOVIMIENTO';
 let ultimoHeadingGuardado = 0;
+let ultimoIntentoSync = 0;
 
 export const calcularDistanciaMetros = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
   const R = 6371e3;
@@ -87,6 +89,11 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
       insertarUbicacion(latitude, longitude, velocidadAGuardar, timestamp);
       ultimoHeadingGuardado = heading ?? 0;
       console.log(`💾 Punto GUARDADO (${estadoActual}): ${velocidadAGuardar.toFixed(1)} km/h, Dist: ${distanciaRecorrida.toFixed(1)}m`);
+    }
+
+    if (timestamp - ultimoIntentoSync >= 900000) {
+      ultimoIntentoSync = timestamp;
+      forceSyncRutas(false).catch((e) => console.log("ℹ️ [Background Tracker] Sync diferido:", e));
     }
   } catch (err) {
     console.error("Error procesando ubicación nativa:", err);

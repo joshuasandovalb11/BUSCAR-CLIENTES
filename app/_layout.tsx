@@ -14,7 +14,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { OTAUpdater } from "../components/OTAUpdater";
 import { useLocation } from "../hooks/useLocation";
 import { initDB } from "../services/database";
-import { SYNC_RUTAS_TASK } from "../services/sync";
+import { forceSyncRutas, SYNC_RUTAS_TASK } from "../services/sync";
 import { startLocationTracking } from "../services/tracking";
 import { clearSessionToken, getSessionToken } from "../utils/storage";
 
@@ -29,9 +29,9 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 export default function RootLayout() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const appState = useRef(AppState.currentState);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const { inicializarRastreoSilencioso, verificarPermisos } = useLocation();
+  const appState = useRef(AppState.currentState);
 
   useEffect(() => {
     const checkSimPresence = async () => {
@@ -54,6 +54,7 @@ export default function RootLayout() {
 
     checkSimPresence();
     startLocationTracking();
+    forceSyncRutas(false).catch(() => {});
 
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (
@@ -62,6 +63,7 @@ export default function RootLayout() {
       ) {
         checkSimPresence();
         startLocationTracking();
+        forceSyncRutas(false).catch(() => {});
       }
       appState.current = nextAppState;
     });
