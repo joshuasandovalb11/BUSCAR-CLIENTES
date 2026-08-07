@@ -59,7 +59,7 @@ export const procesarUbicacion = (location: Location.LocationObject) => {
       return;
     }
 
-    if (distanciaRecorrida < 25 || speedKmh < 6) {
+    if (distanciaRecorrida < 25 || (speedKmh < 3.8 && distanciaRecorrida < 45)) {
       estadoActual = 'ESTACIONARIO';
     } else {
       estadoActual = 'MOVIMIENTO';
